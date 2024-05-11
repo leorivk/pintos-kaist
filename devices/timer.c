@@ -95,9 +95,7 @@ timer_sleep (int64_t ticks) {
 
 	ASSERT (intr_get_level () == INTR_ON);
 
-	if (timer_elapsed(start) < ticks) {
-		thread_sleep(start + ticks);
-	}
+	thread_sleep(timer_ticks() + ticks);
 }
 // ==========================================================================================
 
@@ -131,7 +129,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
-	if (get_local_min_tick() <= ticks) {
+	if (get_global_ticks() <= ticks) {
 		thread_wakeup(ticks);
 	}
 }

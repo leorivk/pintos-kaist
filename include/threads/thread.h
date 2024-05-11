@@ -131,8 +131,8 @@ struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
 
-void set_local_min_tick(int64_t ticks);
-int64_t get_local_min_tick();
+void set_global_ticks();
+int64_t get_global_ticks();
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);

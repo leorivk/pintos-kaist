@@ -66,16 +66,18 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
-static int64_t local_min_tick = INT64_MAX;
+static int64_t global_ticks = INT64_MAX;
 
 void 
-set_local_min_tick(int64_t ticks) {
-	local_min_tick = ticks;
+set_global_ticks() {
+	struct list_elem *front = list_begin(&sleep_list); // sleep list의 첫번째 스레드 반환
+	struct thread *t = list_entry(front, struct thread, elem);
+	global_ticks = t->local_ticks;
 }
 
 int64_t 
-get_local_min_tick() {
-	return local_min_tick;
+get_global_ticks() {
+	return global_ticks;
 }
 
 /* Returns true if T appears to point to a valid thread. */
@@ -647,42 +649,37 @@ thread_sleep(int64_t ticks) {
 
 	ASSERT (!intr_context ());							// 현재 컨텍스트가 인터럽트 컨텍스트가 아닌지 확인
 
-	if (curr = idle_thread) {
+	if (curr == idle_thread) {
 		return;
 	}													// 현재 쓰레드가 idle 쓰레드가 아닌경우
 
 	old_level = intr_disable ();						// 현재 인터럽트 레벨 저장하고 인터럽트 비활성화
-	if (ticks <= local_min_tick)
-		local_min_tick = ticks;
-	
-
 	curr->local_ticks = ticks;
 	list_insert_ordered(&sleep_list, &curr->elem, compare_local_ticks, &curr->local_ticks);
+
+	set_global_ticks();
 	thread_block();
-	schedule();
 	intr_set_level (old_level);							// 이전 인터럽트 레벨 다시 설정해주기
 }
 
+
 void 
 thread_wakeup(int64_t ticks) {
-	ASSERT (!intr_context ());							// 현재 컨텍스트가 인터럽트 컨텍스트가 아닌지 확인
-
-	if (ticks <= get_local_min_tick())
+	if (ticks < get_global_ticks())
 		return;
 
 	while(!list_empty(&sleep_list)) {
-		enum intr_level old_level;							// 인터럽트의 현재 레벨 가져오기
-		old_level = intr_disable ();						// 현재 인터럽트 레벨 저장하고 인터럽트 비활성화
 		struct list_elem *min_ticks_thread = list_begin(&sleep_list);
 		struct thread *unpacking_thread = list_entry(min_ticks_thread, struct thread, elem);
 
-		if (unpacking_thread->local_ticks > ticks)
-			break;
+		if (unpacking_thread->local_ticks > ticks) break;
+
+		enum intr_level old_level;							// 인터럽트의 현재 레벨 가져오기
+		old_level = intr_disable ();						// 현재 인터럽트 레벨 저장하고 인터럽트 비활성화
 		struct list_elem *wakeup_thread = list_pop_front(&sleep_list);
-		list_push_back(&ready_list, wakeup_thread);
+		struct thread *unpacking_wakeup_thread = list_entry(min_ticks_thread, struct thread, elem);
 		intr_set_level (old_level);							// 이전 인터럽트 레벨 다시 설정해주기
+		thread_unblock(unpacking_wakeup_thread);
 	}
-	struct list_elem *min_ticks = list_begin(&sleep_list);
-	struct thread *unpacking = list_entry(min_ticks, struct thread, elem);
-	set_local_min_tick(unpacking->local_ticks);
+	set_global_ticks();
 }
