@@ -39,6 +39,7 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+static struct lock sleep_lock;
 
 /* Thread destruction requests */
 static struct list destruction_req;
@@ -655,7 +656,10 @@ thread_sleep(int64_t ticks) {
 
 	old_level = intr_disable ();						// 현재 인터럽트 레벨 저장하고 인터럽트 비활성화
 	curr->local_ticks = ticks;
+
+	// lock_acquire(&sleep_lock);
 	list_insert_ordered(&sleep_list, &curr->elem, compare_local_ticks, &curr->local_ticks);
+	// lock_release(&sleep_lock);
 
 	set_global_ticks();
 	thread_block();
@@ -665,21 +669,17 @@ thread_sleep(int64_t ticks) {
 
 void 
 thread_wakeup(int64_t ticks) {
-	if (ticks < get_global_ticks())
-		return;
+
+	struct thread *unpacking_thread;
 
 	while(!list_empty(&sleep_list)) {
 		struct list_elem *min_ticks_thread = list_begin(&sleep_list);
-		struct thread *unpacking_thread = list_entry(min_ticks_thread, struct thread, elem);
+		unpacking_thread = list_entry(min_ticks_thread, struct thread, elem);
 
 		if (unpacking_thread->local_ticks > ticks) break;
 
-		enum intr_level old_level;							// 인터럽트의 현재 레벨 가져오기
-		old_level = intr_disable ();						// 현재 인터럽트 레벨 저장하고 인터럽트 비활성화
-		struct list_elem *wakeup_thread = list_pop_front(&sleep_list);
-		struct thread *unpacking_wakeup_thread = list_entry(min_ticks_thread, struct thread, elem);
-		intr_set_level (old_level);							// 이전 인터럽트 레벨 다시 설정해주기
-		thread_unblock(unpacking_wakeup_thread);
+		list_pop_front(&sleep_list);
+		thread_unblock(unpacking_thread);
 	}
 	set_global_ticks();
 }
