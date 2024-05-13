@@ -84,8 +84,6 @@ get_global_ticks() {
 	return global_ticks;
 }
 
-static bool cmp_tick(const struct list_elem *a, const struct list_elem *b, void *aux);
-static bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -312,18 +310,18 @@ thread_wakeup(int64_t ticks) {
 }
 
 /* Compare function to compare wakeup_tick of two threads. */
-static bool
+bool
 cmp_tick(const struct list_elem *a, const struct list_elem *b, void *aux) {
     const struct thread *a_ = list_entry(a, struct thread, elem);
     const struct thread *b_ = list_entry(b, struct thread, elem);
     return a_->wakeup_tick < b_->wakeup_tick;
 }
 
-static bool
+bool
 cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux) {
     const struct thread *a_ = list_entry(a, struct thread, elem);
     const struct thread *b_ = list_entry(b, struct thread, elem);
-    return a_->priority < b_->priority;
+    return a_->priority > b_->priority;
 }
 
 /* Returns the name of the running thread. */
