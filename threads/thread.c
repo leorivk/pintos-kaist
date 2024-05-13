@@ -67,9 +67,9 @@ static void schedule (void);
 static tid_t allocate_tid (void);
 
 /* Setter of global tick */
-void set_global_ticks();
+void set_global_ticks(void);
 
-static bool less_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+static bool less_tick(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -264,29 +264,33 @@ void thread_sleep (int64_t ticks) {
 	enum intr_level old_level;
 
 	ASSERT (!intr_context ());
-	ASSERT (cur != idle_thread);
+	ASSERT(cur != idle_thread);
 
 	old_level = intr_disable();
-
-	cur->status = THREAD_BLOCKED;
-	cur->wakeup_tick = global_ticks + ticks;
+	cur->wakeup_tick = ticks;
 
 	list_insert_ordered (&sleep_list, &cur->elem, less_tick, &cur->wakeup_tick);
-	schedule ();
 
+	thread_block();
 	intr_set_level(old_level);
-
 	set_global_ticks();
-
 	/* When you manipulate thread list, disable interrupt! */
 }
 
-void thread_wakeup(void) {
-    if (!list_empty(&sleep_list)) {
-        struct thread *t = list_entry(list_pop_front(&sleep_list), struct thread, elem);
-        thread_unblock(t);
-    }
-    set_global_ticks();
+void 
+thread_wakeup(int64_t ticks) {
+
+	struct thread *t;
+
+	while(!list_empty(&sleep_list)) {
+		t = list_entry(list_begin(&sleep_list), struct thread, elem);
+
+		if (t->wakeup_tick > ticks) break;
+
+		list_pop_front(&sleep_list);
+		thread_unblock(t);
+	}
+	set_global_ticks();
 }
 
 void set_global_ticks(void) {
@@ -300,7 +304,7 @@ void set_global_ticks(void) {
 
 /* Compare function to compare wakeup_tick of two threads. */
 static bool
-less_tick(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+less_tick(const struct list_elem *a, const struct list_elem *b, void *aux) {
     const struct thread *a_ = list_entry(a, struct thread, elem);
     const struct thread *b_ = list_entry(b, struct thread, elem);
     return a_->wakeup_tick < b_->wakeup_tick;
