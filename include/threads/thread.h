@@ -91,12 +91,10 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int64_t wakeup_tick;				// local tick
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
-
-	/* Tick till wake up */
-	int64_t wakeup_tick;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -116,8 +114,6 @@ struct thread {
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
-/* Global tick : Minimum of local ticks */
-static int64_t global_ticks = INT64_MAX;
 
 void thread_init (void);
 void thread_start (void);
@@ -131,15 +127,17 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 void thread_block (void);
 void thread_unblock (struct thread *);
 
-void thread_sleep(int64_t ticks);
-void thread_wakeup (int64_t ticks);
-
 struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
 
+void set_global_ticks();
+int64_t get_global_ticks();
+
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void thread_sleep(int64_t ticks);
+void thread_wakeup(int64_t ticks);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
@@ -150,5 +148,4 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
-
 #endif /* threads/thread.h */

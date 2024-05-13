@@ -52,6 +52,8 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+static int64_t global_ticks = INT64_MAX;
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -66,8 +68,21 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
-/* Setter of global tick */
-void set_global_ticks(void);
+/* Getter, Setter of global tick */
+void
+set_global_ticks(void) {
+    if (!list_empty(&sleep_list)) {
+        struct thread *min = list_entry(list_begin(&sleep_list), struct thread, elem);
+        global_ticks = min->wakeup_tick;
+    } else {
+        global_ticks = INT64_MAX; // No threads in sleep_list, set global_ticks to maximum value
+    }
+}
+
+int64_t 
+get_global_ticks() {
+	return global_ticks;
+}
 
 static bool less_tick(const struct list_elem *a, const struct list_elem *b, void *aux);
 
@@ -254,27 +269,27 @@ thread_unblock (struct thread *t) {
 	intr_set_level (old_level);
 }
 
-void thread_sleep (int64_t ticks) {
-	/* If the current thread is not idle thread, 
-	change the state of the caller thread to BLOCKED, 
-	store the local tick to wake up,
-	update the global tick if necessary,
-	and call schedule() */
-	struct thread *cur = thread_current();
-	enum intr_level old_level;
+void 
+thread_sleep(int64_t ticks) {
+	struct thread *curr = thread_current ();			// 현재 쓰레드 가져오기
+	enum intr_level old_level;							// 인터럽트의 현재 레벨 가져오기
 
-	ASSERT (!intr_context ());
-	ASSERT(cur != idle_thread);
+	ASSERT (!intr_context ());							// 현재 컨텍스트가 인터럽트 컨텍스트가 아닌지 확인
 
-	old_level = intr_disable();
-	cur->wakeup_tick = ticks;
+	if (curr == idle_thread) {
+		return;
+	}													// 현재 쓰레드가 idle 쓰레드가 아닌경우
 
-	list_insert_ordered (&sleep_list, &cur->elem, less_tick, &cur->wakeup_tick);
+	old_level = intr_disable ();						// 현재 인터럽트 레벨 저장하고 인터럽트 비활성화
+	curr->wakeup_tick = ticks;
 
-	thread_block();
-	intr_set_level(old_level);
+	// lock_acquire(&sleep_lock);
+	list_insert_ordered(&sleep_list, &curr->elem, less_tick, &curr->wakeup_tick);
+	// lock_release(&sleep_lock);
+
 	set_global_ticks();
-	/* When you manipulate thread list, disable interrupt! */
+	thread_block();
+	intr_set_level (old_level);							// 이전 인터럽트 레벨 다시 설정해주기
 }
 
 void 
@@ -291,15 +306,6 @@ thread_wakeup(int64_t ticks) {
 		thread_unblock(t);
 	}
 	set_global_ticks();
-}
-
-void set_global_ticks(void) {
-    if (!list_empty(&sleep_list)) {
-        struct thread *min = list_entry(list_begin(&sleep_list), struct thread, elem);
-        global_ticks = min->wakeup_tick;
-    } else {
-        global_ticks = INT64_MAX; // No threads in sleep_list, set global_ticks to maximum value
-    }
 }
 
 /* Compare function to compare wakeup_tick of two threads. */
