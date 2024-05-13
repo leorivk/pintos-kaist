@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "thread.h": "c",
-        "inttypes.h": "c"
+        "inttypes.h": "c",
+        "stddef.h": "c",
+        "synch.h": "c"
     }
 }

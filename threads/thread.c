@@ -30,6 +30,8 @@ static struct list ready_list;
 // 슬립리스트
 static struct list sleep_list;
 
+bool compare_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -66,6 +68,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+static void preemption(void);
 
 static int64_t global_ticks = INT64_MAX;
 
@@ -143,6 +146,8 @@ thread_init (void) {
 	init_thread (initial_thread, "main", PRI_DEFAULT);	// 스레드를 초기화한다.
 	initial_thread->status = THREAD_RUNNING;			// 스레드 상태를 실행중으로 설정한다.
 	initial_thread->tid = allocate_tid ();				// 스레드 파괴요청 목록을 초기화한다.
+
+	lock_init(&sleep_lock);
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -209,9 +214,11 @@ thread_print_stats (void) {						// 현재 쓰레드의 상태를 출력
    // 
 tid_t
 thread_create (const char *name, int priority,
-		thread_func *function, void *aux) {
+		thread_func *function, void *aux) {		// aux 얘가 락임
 	struct thread *t;							// 새로운 쓰레드를 가르킬 포인터 선언
 	tid_t tid;									// 새로운 쓰레드의 식별자를 저장할 변수 선언
+
+	// list_init(&t->donations);					// 초기화
 
 	ASSERT (function != NULL);					// 함수 포인터가 유효한지 확인
 
@@ -237,8 +244,13 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;						// 코드 세그먼트 레지스터 설정
 	t->tf.eflags = FLAG_IF;						// 인터럽트 플래그 설정
 
+	// 현재 진행중인 쓰레드와 우선순위 비교하고
+	// 만약 새로 추가된 쓰레드의 우선위가 더 크면 status를 Running으로 변경하고 
+	// Lock, condition check and priority check
+	// inversion check
+
 	/* Add to run queue. */
-	thread_unblock (t);							// 준비된 큐에 스레드 추가
+	thread_unblock(t);							// 준비된 큐에 스레드 추가
 
 	return tid;									// 생성된 스레드의 식별자 반환
 }
@@ -258,6 +270,18 @@ thread_block (void) {
 	schedule ();								// 스레드 스케쥴링을 실행
 }
 
+
+bool 
+compare_priority(const struct list_elem *a,
+                 const struct list_elem *b,
+                 void *aux) {
+    struct thread *thread_a = list_entry(a, struct thread, elem);
+    struct thread *thread_b = list_entry(b, struct thread, elem);
+    
+    return thread_a->priority > thread_b->priority;
+}
+
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -275,9 +299,26 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();				// 현재 인터럽트 레벨을 저장하고 인터럽트를 비활성화한다.
 	ASSERT (t->status == THREAD_BLOCKED);		// 쓰레드가 블록되어 있는지 확인
-	list_push_back (&ready_list, &t->elem);		// 스케쥴링이 되기를 기다리는 스레드의 자료구조에 추가	
 	t->status = THREAD_READY;					// READY로 변경
+	list_insert_ordered(&ready_list, &t->elem, compare_priority, NULL);
+
+	preemption();
 	intr_set_level (old_level);					// 인터럽트 레벨을 복원한다.
+}
+
+void 
+preemption(void) {
+	struct list_elem *e;
+	struct thread *t;
+
+	if (list_empty(&ready_list) || thread_current() == idle_thread)
+		return;
+
+	e = list_begin(&ready_list);
+	t = list_entry(e, struct thread, elem);
+
+	if (t->priority > thread_current()->priority)
+		thread_yield();
 }
 
 /* Returns the name of the running thread. */
@@ -339,7 +380,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();						// 현재 인터럽트 레벨 저장하고 인터럽트 비활성화
 	if (curr != idle_thread)							// 현재 쓰레드가 idle 쓰레드가 아닌경우
-		list_push_back (&ready_list, &curr->elem);		// 준비 리스트에서 현재 쓰레드를 다시 추가
+		list_insert_ordered(&ready_list, &curr->elem, compare_priority, NULL);
 	do_schedule (THREAD_READY);							// 스레드를 준비상태로 설정하고 스케쥴로를 호출
 	intr_set_level (old_level);							// 이전 인터럽트 레벨 다시 설정해주기
 }
@@ -347,7 +388,8 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;			// 현재 실행중인 스레드의 우선순의를 새로운 우선순위로 바꾼다
+	thread_current()->priority = new_priority;			// 현재 실행중인 스레드의 우선순의를 새로운 우선순위로 바꾼다
+	preemption();
 }
 
 /* Returns the current thread's priority. */
@@ -445,6 +487,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);	// 스레드의 스택포인터를 설정한다
 	t->priority = priority;		// 스레드의 우선순위를 설정
 	t->magic = THREAD_MAGIC;	// 스레드가 올바르게 초기화되었음을 나타내는데 사용되는 MAGIC NUMBER를 설정
+	t->wait_on_lock = NULL;
+	list_init(&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -657,9 +701,9 @@ thread_sleep(int64_t ticks) {
 	old_level = intr_disable ();						// 현재 인터럽트 레벨 저장하고 인터럽트 비활성화
 	curr->local_ticks = ticks;
 
-	// lock_acquire(&sleep_lock);
+	lock_acquire(&sleep_lock);
 	list_insert_ordered(&sleep_list, &curr->elem, compare_local_ticks, &curr->local_ticks);
-	// lock_release(&sleep_lock);
+	lock_release(&sleep_lock);
 
 	set_global_ticks();
 	thread_block();
