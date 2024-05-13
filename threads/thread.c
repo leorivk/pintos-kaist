@@ -84,7 +84,8 @@ get_global_ticks() {
 	return global_ticks;
 }
 
-static bool less_tick(const struct list_elem *a, const struct list_elem *b, void *aux);
+static bool cmp_tick(const struct list_elem *a, const struct list_elem *b, void *aux);
+static bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -231,6 +232,10 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	struct thread *cur = thread_current();
+	if (cur->priority < t->priority) thread_yield();
+
+
 	return tid;
 }
 
@@ -264,32 +269,30 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered (&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
 
 void 
 thread_sleep(int64_t ticks) {
-	struct thread *curr = thread_current ();			// 현재 쓰레드 가져오기
-	enum intr_level old_level;							// 인터럽트의 현재 레벨 가져오기
+	struct thread *curr = thread_current ();
+	enum intr_level old_level;				
 
-	ASSERT (!intr_context ());							// 현재 컨텍스트가 인터럽트 컨텍스트가 아닌지 확인
+	ASSERT (!intr_context ());				
 
 	if (curr == idle_thread) {
 		return;
-	}													// 현재 쓰레드가 idle 쓰레드가 아닌경우
+	}										
 
-	old_level = intr_disable ();						// 현재 인터럽트 레벨 저장하고 인터럽트 비활성화
+	old_level = intr_disable ();			
 	curr->wakeup_tick = ticks;
 
-	// lock_acquire(&sleep_lock);
-	list_insert_ordered(&sleep_list, &curr->elem, less_tick, &curr->wakeup_tick);
-	// lock_release(&sleep_lock);
+	list_insert_ordered(&sleep_list, &curr->elem, cmp_tick, &curr->wakeup_tick);
 
 	set_global_ticks();
 	thread_block();
-	intr_set_level (old_level);							// 이전 인터럽트 레벨 다시 설정해주기
+	intr_set_level (old_level);						
 }
 
 void 
@@ -310,10 +313,17 @@ thread_wakeup(int64_t ticks) {
 
 /* Compare function to compare wakeup_tick of two threads. */
 static bool
-less_tick(const struct list_elem *a, const struct list_elem *b, void *aux) {
+cmp_tick(const struct list_elem *a, const struct list_elem *b, void *aux) {
     const struct thread *a_ = list_entry(a, struct thread, elem);
     const struct thread *b_ = list_entry(b, struct thread, elem);
     return a_->wakeup_tick < b_->wakeup_tick;
+}
+
+static bool
+cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux) {
+    const struct thread *a_ = list_entry(a, struct thread, elem);
+    const struct thread *b_ = list_entry(b, struct thread, elem);
+    return a_->priority < b_->priority;
 }
 
 /* Returns the name of the running thread. */
@@ -374,7 +384,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered (&ready_list, &curr->elem, cmp_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -383,6 +393,7 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	list_sort(&ready_list, cmp_priority, NULL);
 }
 
 /* Returns the current thread's priority. */
