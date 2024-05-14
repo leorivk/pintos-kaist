@@ -299,8 +299,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();				// 현재 인터럽트 레벨을 저장하고 인터럽트를 비활성화한다.
 	ASSERT (t->status == THREAD_BLOCKED);		// 쓰레드가 블록되어 있는지 확인
-	t->status = THREAD_READY;					// READY로 변경
 	list_insert_ordered(&ready_list, &t->elem, compare_priority, NULL);
+	t->status = THREAD_READY;					// READY로 변경
 
 	preemption();
 	intr_set_level (old_level);					// 인터럽트 레벨을 복원한다.
@@ -314,11 +314,20 @@ preemption(void) {
 	if (list_empty(&ready_list) || thread_current() == idle_thread)
 		return;
 
-	e = list_begin(&ready_list);
+	e = list_front(&ready_list);
 	t = list_entry(e, struct thread, elem);
 
 	if (t->priority > thread_current()->priority)
 		thread_yield();
+}
+
+void 
+preempt(void) {
+	if (thread_current() == idle_thread) return;
+    if (list_empty(&ready_list)) return;
+    struct thread *cur = thread_current();
+    struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
+    if (cur->priority < ready->priority) thread_yield();
 }
 
 /* Returns the name of the running thread. */
