@@ -493,7 +493,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 	t->wait_on_lock = NULL;
-	list_init(&t->donations); // Initializes data structure for priority dontation
+	list_init(&(t->donations)); // Initializes data structure for priority dontation
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

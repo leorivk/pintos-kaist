@@ -139,6 +139,8 @@ int64_t get_global_ticks();
 
 bool cmp_tick(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool cmp_dpriority(const struct list_elem *a, const struct list_elem *b, void *aux);
+
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
