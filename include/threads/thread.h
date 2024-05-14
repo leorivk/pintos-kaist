@@ -139,7 +139,8 @@ int64_t get_global_ticks();
 
 bool cmp_tick(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
-bool cmp_dpriority(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 
 void thread_exit (void) NO_RETURN;
@@ -158,4 +159,5 @@ int thread_get_load_avg (void);
 void do_iret (struct intr_frame *tf);
 
 void preempt(void);
+void donate_priority(void);
 #endif /* threads/thread.h */

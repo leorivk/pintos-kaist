@@ -192,13 +192,12 @@ lock_acquire (struct lock *lock) {
 	struct thread *cur = thread_current();
 	if (lock->holder) {
 		cur->wait_on_lock = lock;
-		list_insert_ordered(&lock->holder->donations, &cur->d_elem, cmp_dpriority, NULL);
-		int d_priority = list_entry(list_begin(&(lock->holder->donations)), struct thread, d_elem)->priority;
-		thread_set_priority(d_priority);
+		// list_insert_ordered(&lock->holder->donations, &cur->d_elem, cmp_donation_priority, NULL);
+		// donate_priority();
 	}
 
 	sema_down (&lock->semaphore);
-	cur->wait_on_lock = NULL;
+   cur->wait_on_lock = NULL;
 	lock->holder = cur;
 }
 
@@ -282,20 +281,21 @@ cond_init (struct condition *cond) {
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
-void
-cond_wait (struct condition *cond, struct lock *lock) {
-	struct semaphore_elem waiter;
+void 
+cond_wait(struct condition *cond, struct lock *lock)
+{
+    struct semaphore_elem waiter;
 
-	ASSERT (cond != NULL);
-	ASSERT (lock != NULL);
-	ASSERT (!intr_context ());
-	ASSERT (lock_held_by_current_thread (lock));
+    ASSERT(cond != NULL);
+    ASSERT(lock != NULL);
+    ASSERT(!intr_context());
+    ASSERT(lock_held_by_current_thread(lock));
 
-	sema_init (&waiter.semaphore, 0);
-	list_insert_ordered (&cond->waiters, &waiter.elem, cmp_priority, NULL);
-	lock_release (lock);
-	sema_down (&waiter.semaphore);
-	lock_acquire (lock);
+    sema_init(&waiter.semaphore, 0);
+    list_insert_ordered(&cond->waiters, &waiter.elem, cmp_sema_priority, NULL);
+    lock_release(lock);
+    sema_down(&waiter.semaphore);
+    lock_acquire(lock);
 }
 
 /* If any threads are waiting on COND (protected by LOCK), then
@@ -312,9 +312,11 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters))
+	if (!list_empty (&cond->waiters)) {
+		list_sort(&cond->waiters, cmp_sema_priority, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);
+	}
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -332,10 +334,36 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 		cond_signal (cond, lock);
 }
 
-bool cmp_dpriority(const struct list_elem *a,
-                            const struct list_elem *b, void *aux UNUSED)
+bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
-    struct thread *st_a = list_entry(a, struct thread, d_elem);
-    struct thread *st_b = list_entry(b, struct thread, d_elem);
-    return st_a->priority > st_b->priority;
+    struct thread *a_ = list_entry(a, struct thread, d_elem);
+    struct thread *b_ = list_entry(b, struct thread, d_elem);
+    return a_->priority > b_->priority;
+}
+
+bool cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
+    struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
+    struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
+
+    struct list *waiters_a = &(sema_a->semaphore.waiters);
+    struct list *waiters_b = &(sema_b->semaphore.waiters);
+
+    struct thread *a_ = list_entry(list_begin(waiters_a), struct thread, elem);
+    struct thread *b_ = list_entry(list_begin(waiters_b), struct thread, elem);
+
+    return a_->priority > b_->priority;
+}
+
+void
+donate_priority() {
+    struct thread *cur = thread_current();
+    for (int i=0; i<8; i++) {
+        if (cur->wait_on_lock == NULL) return;
+        if (cur->priority > cur->wait_on_lock->holder->priority) {
+            cur->wait_on_lock->holder->priority = cur->priority;         // priority 변경
+            // cur->wait_on_lock = cur->wait_on_lock->holder->wait_on_lock; // wait_on_lock 변경 이건 해줄필요 없나..?
+            cur = cur->wait_on_lock->holder; // cur = next(cur); 와 비슷한 느낌.
+        }
+    }
 }
