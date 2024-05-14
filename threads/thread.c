@@ -231,9 +231,6 @@ thread_create (const char *name, int priority,
 	thread_unblock (t);
 	preempt();
 
-	struct thread *cur = thread_current();
-	if (cur->priority < t->priority) thread_yield();
-
 	return tid;
 }
 
