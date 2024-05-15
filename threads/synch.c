@@ -292,7 +292,7 @@ cond_wait(struct condition *cond, struct lock *lock)
     ASSERT(lock_held_by_current_thread(lock));
 
     sema_init(&waiter.semaphore, 0);
-    list_insert_ordered(&cond->waiters, &waiter.elem, cmp_sema_priority, NULL);
+    list_push_back(&cond->waiters, &waiter.elem);
     lock_release(lock);
     sema_down(&waiter.semaphore);
     lock_acquire(lock);
@@ -348,6 +348,7 @@ bool cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, voi
 
     struct list *waiters_a = &(sema_a->semaphore.waiters);
     struct list *waiters_b = &(sema_b->semaphore.waiters);
+
 
     struct thread *a_ = list_entry(list_begin(waiters_a), struct thread, elem);
     struct thread *b_ = list_entry(list_begin(waiters_b), struct thread, elem);
