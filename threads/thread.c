@@ -218,8 +218,6 @@ thread_create (const char *name, int priority,
 	struct thread *t;							// 새로운 쓰레드를 가르킬 포인터 선언
 	tid_t tid;									// 새로운 쓰레드의 식별자를 저장할 변수 선언
 
-	// list_init(&t->donations);					// 초기화
-
 	ASSERT (function != NULL);					// 함수 포인터가 유효한지 확인
 
 	/* Allocate thread. */

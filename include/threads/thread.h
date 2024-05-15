@@ -91,6 +91,7 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int init_priority;                  /* init_Priority. */
 	int64_t local_ticks;				// local tick
 
 	struct lock *wait_on_lock;			// 내가 필요로 하는 리소스를 저장하는 lock

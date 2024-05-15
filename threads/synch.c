@@ -44,6 +44,7 @@
 
 bool compare_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool compare_sema_priority(const struct list_elem *list_elem_a, const struct list_elem *list_elem_b, void *aux UNUSED);
+void donate (void);
 
 
 void
@@ -190,20 +191,24 @@ lock_init (struct lock *lock) {
    we need to sleep. */
 void
 lock_acquire (struct lock *lock) {
-	ASSERT (lock != NULL);
-	ASSERT (!intr_context ());
-	ASSERT (!lock_held_by_current_thread (lock));
+  ASSERT (lock != NULL);
+  ASSERT (!intr_context ());
+  ASSERT (!lock_held_by_current_thread (lock));
 
-	struct thread *curr = thread_current();
-	if (lock->holder) {								// lock이 걸려있으면
-		curr->wait_on_lock = lock;					// 대기
-						
-	}
+  struct thread *cur = thread_current ();
+  if (lock->holder) {                     // 두번째 쓰레드부터는 이 조건에 걸리게 된다.
+    cur->wait_on_lock = lock;             // wait on lock에 해당 자원을 할당해줘서 대기중임을 알린다
+    // lock을 선점하고 있는 thread의 donations에 지금 쓰레드를 추가해줘서 대기중인 쓰래드가 있음을 명시한다
+    list_insert_ordered (&lock->holder->donations, &cur->d_elem, compare_donation_priority, NULL);
+    donate();                             // 그 후 thread의 우선순위를 결정하는 donate 함수 실행
+  }
 
-
-	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+  sema_down (&lock->semaphore);
+  
+  cur->wait_on_lock = NULL;
+  lock->holder = cur;                     // 여기서 최초 쓰레드의 락이 걸리게 된다.  
 }
+
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -235,6 +240,11 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+   struct thread *cur = thread_current();
+   if (cur->init_priority) {
+      cur->priority = cur->init_priority;
+      cur->init_priority = NULL;
+   }
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
@@ -351,11 +361,28 @@ bool
 compare_sema_priority(const struct list_elem *list_elem_a, 
                       const struct list_elem *list_elem_b,
                       void *aux UNUSED) {
+
     struct semaphore_elem *sema_a = list_entry(list_elem_a, struct semaphore_elem, elem);
     struct semaphore_elem *sema_b = list_entry(list_elem_b, struct semaphore_elem, elem);
+
     struct list *waiters_a = &(sema_a->semaphore.waiters);
     struct list *waiters_b = &(sema_b->semaphore.waiters);
+
     struct thread *a = list_entry(list_begin(waiters_a),struct thread, elem);
     struct thread *b = list_entry(list_begin(waiters_b),struct thread, elem);
+
     return a->priority > b->priority;
+}
+
+void donate (void) {
+   // 현재 쓰레드와 대기중인 holder 쓰레드의 정보를 받아온다
+   struct thread *cur = thread_current();             
+
+
+
+   struct thread *holder = cur->wait_on_lock->holder;
+   if (holder->priority < cur->priority) {
+      holder->init_priority = holder->priority;          // 자신의 원래 우선순위를 저장시켜준다
+      holder->priority = cur->priority;
+   }
 }
