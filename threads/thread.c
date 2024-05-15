@@ -68,23 +68,6 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
-/* Getter, Setter of global tick */
-void
-set_global_ticks(void) {
-    if (!list_empty(&sleep_list)) {
-        struct thread *min = list_entry(list_begin(&sleep_list), struct thread, elem);
-        global_ticks = min->wakeup_tick;
-    } else {
-        global_ticks = INT64_MAX; // No threads in sleep_list, set global_ticks to maximum value
-    }
-}
-
-int64_t 
-get_global_ticks() {
-	return global_ticks;
-}
-
-
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -264,7 +247,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_insert_ordered (&ready_list, &t->elem, cmp_priority, NULL);
+	list_insert_ordered (&ready_list, &t->elem, cmp_thread_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -281,9 +264,8 @@ thread_sleep(int64_t ticks) {
 	ASSERT (cur != idle_thread);			
 	cur->wakeup_tick = ticks;
 
-	list_insert_ordered(&sleep_list, &cur->elem, cmp_tick, NULL);
+	list_insert_ordered(&sleep_list, &cur->elem, cmp_thread_ticks, NULL);
 
-	set_global_ticks();
 	thread_block();
 	intr_set_level (old_level);						
 }
@@ -306,19 +288,18 @@ thread_wakeup(int64_t ticks) {
 		preempt();
 	}
 	intr_set_level(old_level);
-	set_global_ticks();
 }
 
 /* Compare function to compare wakeup_tick of two threads. */
 bool
-cmp_tick(const struct list_elem *a, const struct list_elem *b, void *aux) {
+cmp_thread_ticks(const struct list_elem *a, const struct list_elem *b, void *aux) {
     struct thread *a_ = list_entry(a, struct thread, elem);
     struct thread *b_ = list_entry(b, struct thread, elem);
     return a_->wakeup_tick < b_->wakeup_tick;
 }
 
 bool
-cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux) {
+cmp_thread_priority(const struct list_elem *a, const struct list_elem *b, void *aux) {
     struct thread *a_ = list_entry(a, struct thread, elem);
     struct thread *b_ = list_entry(b, struct thread, elem);
     return a_->priority > b_->priority;
@@ -382,7 +363,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_insert_ordered (&ready_list, &curr->elem, cmp_priority, NULL);
+		list_insert_ordered (&ready_list, &curr->elem, cmp_thread_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -391,6 +372,7 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	thread_current ()->init_priority = new_priority;
 	preempt();
 }
 
@@ -488,6 +470,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+	t->init_priority = priority;
 	t->magic = THREAD_MAGIC;
 	t->wait_on_lock = NULL;
 	list_init(&(t->donations)); // Initializes data structure for priority dontation

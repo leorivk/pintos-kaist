@@ -66,7 +66,7 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_insert_ordered (&sema->waiters, &thread_current ()->elem, cmp_priority, NULL);
+		list_insert_ordered (&sema->waiters, &thread_current ()->elem, cmp_thread_priority, NULL);
 		thread_block ();
 	}
 	sema->value--;
@@ -192,8 +192,8 @@ lock_acquire (struct lock *lock) {
 	struct thread *cur = thread_current();
 	if (lock->holder) {
 		cur->wait_on_lock = lock;
-		// list_insert_ordered(&lock->holder->donations, &cur->d_elem, cmp_donation_priority, NULL);
-		// donate_priority();
+		list_insert_ordered(&lock->holder->donations, &cur->d_elem, cmp_donation_priority, NULL);
+		donate_priority();
 	}
 
 	sema_down (&lock->semaphore);
@@ -230,6 +230,9 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+
+   remove_donor(lock);
+	update_priority();
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
@@ -356,15 +359,57 @@ bool cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, voi
     return a_->priority > b_->priority;
 }
 
-void
-donate_priority() {
-    struct thread *cur = thread_current();
-    for (int i=0; i<8; i++) {
-        if (cur->wait_on_lock == NULL) return;
-        if (cur->priority > cur->wait_on_lock->holder->priority) {
-            cur->wait_on_lock->holder->priority = cur->priority;         // priority 변경
-            // cur->wait_on_lock = cur->wait_on_lock->holder->wait_on_lock; // wait_on_lock 변경 이건 해줄필요 없나..?
-            cur = cur->wait_on_lock->holder; // cur = next(cur); 와 비슷한 느낌.
-        }
-    }
+void donate_priority(void)
+{
+	struct thread *cur = thread_current(); 
+	struct thread *holder;					
+
+	int priority = cur->priority;
+
+	for (int i = 0; i < 8; i++)
+	{
+		if (cur->wait_on_lock == NULL) 
+			return;
+		holder = cur->wait_on_lock->holder;
+		if (holder->priority < priority)
+			holder->priority = priority;
+		cur = holder;
+	}
+}
+
+void remove_donor(struct lock *lock)
+{
+	struct list *donations = &(thread_current()->donations); 
+	struct list_elem *cur;							 
+	struct thread *donor_thread;
+
+	if (list_empty(donations))
+		return;
+
+	cur = list_front(donations);
+
+	while (cur != list_end(donations))
+	{
+		donor_thread = list_entry(cur, struct thread, d_elem);
+		if (donor_thread->wait_on_lock == lock)		   
+			list_remove(&donor_thread->d_elem); 
+      cur = list_next(cur);
+	}
+}
+
+
+void update_priority(void)
+{
+	struct thread *cur = thread_current();
+	struct list *donations = &(thread_current()->donations);
+	struct thread *donations_root;
+
+	if (list_empty(donations)) 
+	{
+		cur->priority = cur->init_priority; 
+		return;
+	}
+
+	donations_root = list_entry(list_front(donations), struct thread, d_elem);
+	cur->priority = donations_root->priority;
 }
