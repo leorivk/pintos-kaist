@@ -68,7 +68,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-static void preemption(void);
+void preemption(void);
 
 static int64_t global_ticks = INT64_MAX;
 
@@ -494,6 +494,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);	// 스레드의 스택포인터를 설정한다
 	t->priority = priority;		// 스레드의 우선순위를 설정
 	t->magic = THREAD_MAGIC;	// 스레드가 올바르게 초기화되었음을 나타내는데 사용되는 MAGIC NUMBER를 설정
+
+	t->init_priority = priority;		// 스레드의 우선순위를 설정
 	t->wait_on_lock = NULL;
 	list_init(&t->donations);
 }

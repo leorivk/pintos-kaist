@@ -42,6 +42,9 @@
    - up or "V": increment the value (and wake up one waiting
    thread, if any). */
 
+
+bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool compare_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool compare_sema_priority(const struct list_elem *list_elem_a, const struct list_elem *list_elem_b, void *aux UNUSED);
 void donate (void);
@@ -116,10 +119,12 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	sema->value++;
 	if (!list_empty (&sema->waiters))
+		list_sort(&sema->waiters, compare_priority, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
+	sema->value++;
+	preemption();
 	intr_set_level (old_level);
 }
 
@@ -191,22 +196,22 @@ lock_init (struct lock *lock) {
    we need to sleep. */
 void
 lock_acquire (struct lock *lock) {
-  ASSERT (lock != NULL);
-  ASSERT (!intr_context ());
-  ASSERT (!lock_held_by_current_thread (lock));
+  	ASSERT (lock != NULL);
+  	ASSERT (!intr_context ());
+  	ASSERT (!lock_held_by_current_thread (lock));
 
-  struct thread *cur = thread_current ();
-  if (lock->holder) {                     // 두번째 쓰레드부터는 이 조건에 걸리게 된다.
-    cur->wait_on_lock = lock;             // wait on lock에 해당 자원을 할당해줘서 대기중임을 알린다
-    // lock을 선점하고 있는 thread의 donations에 지금 쓰레드를 추가해줘서 대기중인 쓰래드가 있음을 명시한다
-    list_insert_ordered (&lock->holder->donations, &cur->d_elem, compare_donation_priority, NULL);
-    donate();                             // 그 후 thread의 우선순위를 결정하는 donate 함수 실행
-  }
+  	struct thread *cur = thread_current ();
+  	if (lock->holder) {                     // 두번째 쓰레드부터는 이 조건에 걸리게 된다.
+  	  	cur->wait_on_lock = lock;             // wait on lock에 해당 자원을 할당해줘서 대기중임을 알린다
+  	  	// lock을 선점하고 있는 thread의 donations에 지금 쓰레드를 추가해줘서 대기중인 쓰래드가 있음을 명시한다
+  	  	list_insert_ordered (&lock->holder->donations, &cur->d_elem, compare_donation_priority, NULL);
+  	  	donate();                             // 그 후 thread의 우선순위를 결정하는 donate 함수 실행
+  	}
 
-  sema_down (&lock->semaphore);
+  	sema_down (&lock->semaphore);
   
-  cur->wait_on_lock = NULL;
-  lock->holder = cur;                     // 여기서 최초 쓰레드의 락이 걸리게 된다.  
+  	cur->wait_on_lock = NULL;
+  	lock->holder = cur;                     // 여기서 최초 쓰레드의 락이 걸리게 된다.  
 }
 
 
@@ -240,11 +245,7 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-   struct thread *cur = thread_current();
-   if (cur->init_priority) {
-      cur->priority = cur->init_priority;
-      cur->init_priority = NULL;
-   }
+   	struct thread *cur = thread_current();
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
@@ -326,7 +327,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if (!list_empty (&cond->waiters))
-	   list_sort(&cond->waiters, compare_sema_priority, NULL);
+	   	list_sort(&cond->waiters, compare_sema_priority, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);
 }
@@ -375,14 +376,16 @@ compare_sema_priority(const struct list_elem *list_elem_a,
 }
 
 void donate (void) {
-   // 현재 쓰레드와 대기중인 holder 쓰레드의 정보를 받아온다
-   struct thread *cur = thread_current();             
-
-
-
-   struct thread *holder = cur->wait_on_lock->holder;
-   if (holder->priority < cur->priority) {
-      holder->init_priority = holder->priority;          // 자신의 원래 우선순위를 저장시켜준다
-      holder->priority = cur->priority;
-   }
+   	// 현재 쓰레드와 대기중인 holder 쓰레드의 정보를 받아온다
+   	struct thread *cur = thread_current();             
+   	for (int i = 0; i < 8; i++) {
+		if (!cur->wait_on_lock) {
+			break;
+		}
+   		struct thread *holder = cur->wait_on_lock->holder;
+		if (cur->priority > holder->priority) {
+			holder->priority = cur->priority;
+			cur = holder;
+		}
+   	}
 }
