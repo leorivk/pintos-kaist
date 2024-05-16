@@ -68,7 +68,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-void preemption(void);
+void preempt(void);
 
 static int64_t global_ticks = INT64_MAX;
 
@@ -184,7 +184,7 @@ thread_tick (void) {
 	else
 		kernel_ticks++;
 
-	/* Enforce preemption. */
+	/* Enforce preempt. */
 	if (++thread_ticks >= TIME_SLICE)			// 틱을 증가시키고 정해놓은 기준보다 더 오래 쓰레드가 실행됐으면
 		intr_yield_on_return ();				// 스케쥴러에게 CPU를 양보하도록 지시
 }
@@ -249,7 +249,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock(t);							// 준비된 큐에 스레드 추가
-	preemption();
+	preempt();
 
 	return tid;									// 생성된 스레드의 식별자 반환
 }
@@ -305,7 +305,7 @@ thread_unblock (struct thread *t) {
 }
 
 void 
-preemption(void) {
+preempt(void) {
 	struct list_elem *e;
 	struct thread *t;
 
@@ -388,7 +388,7 @@ void
 thread_set_priority (int new_priority) {
 	thread_current()->init_priority = new_priority;			// 현재 실행중인 스레드의 우선순의를 새로운 우선순위로 바꾼다
 	update_donation();
-	preemption();
+	preempt();
 }
 
 /* Returns the current thread's priority. */
@@ -725,7 +725,7 @@ thread_wakeup(int64_t ticks) {
 
 		list_pop_front(&sleep_list);
 		thread_unblock(unpacking_thread);
-		preemption();
+		preempt();
 	}
 	set_global_ticks();
 }

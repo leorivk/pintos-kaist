@@ -126,7 +126,7 @@ sema_up (struct semaphore *sema) {
 					struct thread, elem));
 	}
 	sema->value++;
-	preemption();
+	preempt();
 	intr_set_level (old_level);
 }
 
@@ -401,7 +401,7 @@ donate(void) {
 }
 
 void
-update_donation() {
+update_donation() {								// 멀티플 상황에서 나보다 더 쓰레드가 있으면 내 우선순위를 update해준다
     struct thread *cur = thread_current();
     struct list_elem *e;
     int max_priority = 0;
