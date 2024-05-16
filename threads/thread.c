@@ -249,6 +249,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock(t);							// 준비된 큐에 스레드 추가
+	preemption();
 
 	return tid;									// 생성된 스레드의 식별자 반환
 }
@@ -300,7 +301,6 @@ thread_unblock (struct thread *t) {
 	list_insert_ordered(&ready_list, &t->elem, compare_priority, NULL);
 	t->status = THREAD_READY;					// READY로 변경
 
-	preemption();
 	intr_set_level (old_level);					// 인터럽트 레벨을 복원한다.
 }
 
@@ -317,15 +317,6 @@ preemption(void) {
 
 	if (t->priority > thread_current()->priority)
 		thread_yield();
-}
-
-void 
-preempt(void) {
-	if (thread_current() == idle_thread) return;
-    if (list_empty(&ready_list)) return;
-    struct thread *cur = thread_current();
-    struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
-    if (cur->priority < ready->priority) thread_yield();
 }
 
 /* Returns the name of the running thread. */
@@ -395,7 +386,8 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current()->priority = new_priority;			// 현재 실행중인 스레드의 우선순의를 새로운 우선순위로 바꾼다
+	thread_current()->init_priority = new_priority;			// 현재 실행중인 스레드의 우선순의를 새로운 우선순위로 바꾼다
+	update_donation();
 	preemption();
 }
 
@@ -733,6 +725,7 @@ thread_wakeup(int64_t ticks) {
 
 		list_pop_front(&sleep_list);
 		thread_unblock(unpacking_thread);
+		preemption();
 	}
 	set_global_ticks();
 }

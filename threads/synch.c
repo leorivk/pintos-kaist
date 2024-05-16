@@ -48,6 +48,7 @@ bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b,
 bool compare_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool compare_sema_priority(const struct list_elem *list_elem_a, const struct list_elem *list_elem_b, void *aux UNUSED);
 void donate (void);
+void update_donation(void);
 
 
 void
@@ -119,10 +120,11 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
+	if (!list_empty (&sema->waiters)) {
 		list_sort(&sema->waiters, compare_priority, NULL);
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
+	}
 	sema->value++;
 	preemption();
 	intr_set_level (old_level);
@@ -246,6 +248,15 @@ lock_release (struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
    	struct thread *cur = thread_current();
+   	struct list_elem *e;
+    /* donation 리스트를 순회하며 */
+    for (e = list_begin (&cur->donations); e != list_end (&cur->donations); e = list_next (e)) {
+        struct thread *t = list_entry (e, struct thread, d_elem);
+        /* 인자로 받은 lock을 원해서 donate를 한 경우라면 */
+        if (t->wait_on_lock == lock)
+            list_remove (&t->d_elem);
+    }
+    update_donation();
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
@@ -375,17 +386,34 @@ compare_sema_priority(const struct list_elem *list_elem_a,
     return a->priority > b->priority;
 }
 
-void donate (void) {
-   	// 현재 쓰레드와 대기중인 holder 쓰레드의 정보를 받아온다
-   	struct thread *cur = thread_current();             
-   	for (int i = 0; i < 8; i++) {
-		if (!cur->wait_on_lock) {
-			break;
-		}
-   		struct thread *holder = cur->wait_on_lock->holder;
-		if (cur->priority > holder->priority) {
-			holder->priority = cur->priority;
-			cur = holder;
-		}
-   	}
+void
+donate(void) {
+    struct thread *cur = thread_current();
+    for (int i=0; i<8; i++) {
+        if (cur->wait_on_lock == NULL) return;
+        if (cur->priority > cur->wait_on_lock->holder->priority) {
+            cur->wait_on_lock->holder->priority = cur->priority; // priority 변경
+            cur = cur->wait_on_lock->holder; // cur = next(cur); 와 비슷한 느낌.
+        }else {
+            return;
+        }
+    }
+}
+
+void
+update_donation() {
+    struct thread *cur = thread_current();
+    struct list_elem *e;
+    int max_priority = 0;
+    cur->priority = cur->init_priority;
+    if (!list_empty(&cur->donations)) {
+        list_sort(&cur->donations, compare_donation_priority, 0);
+        e = list_front(&cur->donations);
+        struct thread *max = list_entry(e, struct thread, d_elem);
+        max_priority = max->priority;
+    }
+    // list가 비어있는 경우를 생각해서, 미리 cur->priority = cur->original_priority 를 수행해놔야함.
+    if (max_priority > cur->priority) {
+        cur->priority = max_priority;
+    }
 }
