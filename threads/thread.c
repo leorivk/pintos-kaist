@@ -306,14 +306,10 @@ thread_unblock (struct thread *t) {
 
 void 
 preempt(void) {
-	struct list_elem *e;
-	struct thread *t;
-
 	if (list_empty(&ready_list) || thread_current() == idle_thread)
 		return;
 
-	e = list_front(&ready_list);
-	t = list_entry(e, struct thread, elem);
+	struct thread *t = list_entry(list_front(&ready_list), struct thread, elem);
 
 	if (t->priority > thread_current()->priority)
 		thread_yield();

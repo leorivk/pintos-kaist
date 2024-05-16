@@ -43,8 +43,6 @@
    thread, if any). */
 
 
-bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
-bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool compare_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool compare_sema_priority(const struct list_elem *list_elem_a, const struct list_elem *list_elem_b, void *aux UNUSED);
 void donate (void);
@@ -246,17 +244,20 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+   struct thread *cur = thread_current();
+   struct list_elem *e;
+   /* donation 리스트를 순회하며 */
+   for (e = list_begin (&cur->donations); e != list_end (&cur->donations);) {
+      struct thread *t = list_entry (e, struct thread, d_elem);
+      /* 인자로 받은 lock을 원해서 donate를 한 경우라면 */
+      
+      if (t->wait_on_lock == lock)
+         e = list_remove (&t->d_elem);
+      else
+         e = list_next(&t->d_elem);
 
-   	struct thread *cur = thread_current();
-   	struct list_elem *e;
-    /* donation 리스트를 순회하며 */
-    for (e = list_begin (&cur->donations); e != list_end (&cur->donations); e = list_next (e)) {
-        struct thread *t = list_entry (e, struct thread, d_elem);
-        /* 인자로 받은 lock을 원해서 donate를 한 경우라면 */
-        if (t->wait_on_lock == lock)
-            list_remove (&t->d_elem);
-    }
-    update_donation();
+   }
+   update_donation();
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
@@ -337,10 +338,11 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters))
-	   	list_sort(&cond->waiters, compare_sema_priority, NULL);
+	if (!list_empty (&cond->waiters)) {
+	   list_sort(&cond->waiters, compare_sema_priority, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
-					struct semaphore_elem, elem)->semaphore);
+		   struct semaphore_elem, elem)->semaphore);
+   }
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -394,7 +396,7 @@ donate(void) {
         if (cur->priority > cur->wait_on_lock->holder->priority) {
             cur->wait_on_lock->holder->priority = cur->priority; // priority 변경
             cur = cur->wait_on_lock->holder; // cur = next(cur); 와 비슷한 느낌.
-        }else {
+        } else {
             return;
         }
     }
