@@ -30,6 +30,7 @@ typedef int tid_t;
 #define PRI_MAX 63	   /* Highest priority. */
 #define RECENT_CPU_DEFAULT 0 
 #define NICE_DEFAULT 0 
+#define LOAD_AVG_DEFAULT 0
 
 #define FDT_PAGES 2
 #define FDT_COUNT_LIMIT 128
@@ -173,10 +174,12 @@ int thread_get_load_avg(void);
 
 void do_iret(struct intr_frame *tf);
 
-void calc_priority(void);
-void calc_recent_cpu(void);
+void calc_priority(struct thread *t);
+void calc_recent_cpu(struct thread *t);
 void calc_decay(void);
 void calc_load_avg(void);
 void incr_recent_cpu(void);
+void recalc_priority(void);
+void recalc_recent_cpu(void);
 
 #endif /* threads/thread.h */

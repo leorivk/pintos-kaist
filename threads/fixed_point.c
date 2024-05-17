@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include "fixed_point.h"
+#include "threads/fixed_point.h"
 
 int int_to_fixed(int n) {
     return n * F;
