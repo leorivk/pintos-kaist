@@ -205,7 +205,8 @@ lock_acquire (struct lock *lock) {
   	  	cur->wait_on_lock = lock;             // wait on lock에 해당 자원을 할당해줘서 대기중임을 알린다
   	  	// lock을 선점하고 있는 thread의 donations에 지금 쓰레드를 추가해줘서 대기중인 쓰래드가 있음을 명시한다
   	  	list_insert_ordered (&lock->holder->donations, &cur->d_elem, compare_donation_priority, NULL);
-  	  	donate();                             // 그 후 thread의 우선순위를 결정하는 donate 함수 실행
+      if (!thread_mlfqs)
+  	  	   donate();                             // 그 후 thread의 우선순위를 결정하는 donate 함수 실행
   	}
 
   	sema_down (&lock->semaphore);
@@ -246,19 +247,21 @@ lock_release (struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
    struct thread *cur = thread_current();
    struct list_elem *e;
-   /* donation 리스트를 순회하며 */
-   for (e = list_begin (&cur->donations); e != list_end (&cur->donations);) {
-      struct thread *t = list_entry (e, struct thread, d_elem);
-      /* 인자로 받은 lock을 원해서 donate를 한 경우라면 */
-      
-      if (t->wait_on_lock == lock)
-         e = list_remove (&t->d_elem);
-      else
-         e = list_next(&t->d_elem);
+   if (!thread_mlfqs){
+      /* donation 리스트를 순회하며 */
+      for (e = list_begin (&cur->donations); e != list_end (&cur->donations);) {
+         struct thread *t = list_entry (e, struct thread, d_elem);
+         /* 인자로 받은 lock을 원해서 donate를 한 경우라면 */
 
+         if (t->wait_on_lock == lock)
+            e = list_remove (&t->d_elem);
+         else
+            e = list_next(&t->d_elem);
+
+      }
+      update_donation();
+	   lock->holder = NULL;
    }
-   update_donation();
-	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
 
@@ -403,7 +406,7 @@ donate(void) {
 }
 
 void
-update_donation() {								// 멀티플 상황에서 나보다 더 쓰레드가 있으면 내 우선순위를 update해준다
+update_donation() {								// 멀티플 상황에서 나보다 더 우선순위가 큰 쓰레드가 있으면 내 우선순위를 update해준다
     struct thread *cur = thread_current();
     struct list_elem *e;
     int max_priority = 0;
