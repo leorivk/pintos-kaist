@@ -28,9 +28,13 @@ typedef int tid_t;
 #define PRI_MIN 0	   /* Lowest priority. */
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63	   /* Highest priority. */
+#define RECENT_CPU_DEFAULT 0 
+#define NICE_DEFAULT 0 
 
 #define FDT_PAGES 2
 #define FDT_COUNT_LIMIT 128
+
+#define TIME_SLICE 4  /* # of timer ticks to give each thread. */
 
 /* A kernel thread or user process.
  *
@@ -106,6 +110,9 @@ struct thread
 	struct list donations;
 	struct list_elem d_elem;
 
+	int nice;                   
+    int recent_cpu;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
@@ -165,5 +172,11 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
 void do_iret(struct intr_frame *tf);
+
+void calc_priority(void);
+void calc_recent_cpu(void);
+void calc_decay(void);
+void calc_load_avg(void);
+void incr_recent_cpu(void);
 
 #endif /* threads/thread.h */

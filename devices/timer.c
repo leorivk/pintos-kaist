@@ -124,6 +124,17 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
 
+	incr_recent_cpu();
+
+	/* 1초 : 100 ticks */
+    if (timer_ticks() % TIMER_FREQ == 0) {
+        calc_load_avg();
+        calc_recent_cpu();
+    }
+
+	/* TIME_SLICE(4 tick)마다 priority 계산 */
+	if (timer_ticks() % TIME_SLICE == 0) calc_priority();
+	
 	thread_wakeup(ticks);
 }
 

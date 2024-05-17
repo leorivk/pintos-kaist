@@ -50,7 +50,6 @@ static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Scheduling. */
-#define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
 static int64_t global_ticks = INT64_MAX;
@@ -59,6 +58,8 @@ static int64_t global_ticks = INT64_MAX;
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+int decay;
+int load_avg;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -122,6 +123,8 @@ thread_init (void) {
 	init_thread (initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
+	initial_thread->recent_cpu = RECENT_CPU_DEFAULT;
+	initial_thread->nice = NICE_DEFAULT;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -388,27 +391,28 @@ thread_get_priority (void) {
 void
 thread_set_nice (int nice UNUSED) {
 	/* TODO: Your implementation goes here */
+	thread_current()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return load_avg * 100;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) {
 	/* TODO: Your implementation goes here */
-	return 0;
+	return thread_current()->recent_cpu * 100;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -663,4 +667,41 @@ preempt(void) {
     struct thread *cur = thread_current();
     struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
     if (cur->priority < ready->priority) thread_yield();
+}
+
+void 
+calc_priority(void) {
+    struct thread *cur = thread_current();
+
+	if (cur == idle_thread)  return ;
+  	cur->priority = fixed_to_int_trunc(fixed_add_int(fixed_div_int(cur->recent_cpu, -4),
+						PRI_MAX - cur->nice * 2));
+}
+
+void 
+calc_recent_cpu(void) {
+    struct thread *cur = thread_current();
+	if (cur == idle_thread) return ;
+  	cur->recent_cpu = fixed_add_int(fixed_mul(fixed_div(fixed_mul_int(load_avg, 2), 
+						fixed_add_int(fixed_mul_int(load_avg, 2), 1)), cur->recent_cpu), cur->nice);
+}
+
+int 
+calc_decay(void){
+	decay = fixed_div(
+				fixed_mul_int(load_avg, 2),
+				fixed_mul_int(fixed_add_int(load_avg, 1), 1));
+}
+
+void 
+calc_load_avg(void) {
+    load_avg = fixed_add(
+		fixed_mul(fixed_div(int_to_fixed(59), int_to_fixed(60)),load_avg),
+		fixed_mul(fixed_div(int_to_fixed(1),int_to_fixed(60)), list_size(&ready_list)));
+}
+
+void 
+incr_recent_cpu(void){
+    struct thread *cur = thread_current();
+	cur->recent_cpu = fixed_add(cur->recent_cpu, int_to_fixed(1));
 }
