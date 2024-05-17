@@ -48,4 +48,3 @@ int fixed_div(int x, int y) {
 int fixed_div_int(int x, int n) {
     return x / n;
 }
-
