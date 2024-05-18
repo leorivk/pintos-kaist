@@ -129,15 +129,15 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 		// In every clock tick, increase the running thread’s recent_cpu by one.
 		incr_recent_cpu();
 
+		// In every fourth tick, recompute the priority of all threads
+		if (ticks % TIME_SLICE == 0) {
+			update_priority();
+		}
+
 		// In every second, update every thread’s recent_cpu
 		if (ticks % TIMER_FREQ == 0) {
 			calc_load_avg();
 			update_recent_cpu();
-		}
-
-		// In every fourth tick, recompute the priority of all threads
-		if (ticks % TIME_SLICE == 0) {
-			update_priority();
 		}
     }
 
