@@ -25,6 +25,9 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
+/* List of all threads */
+static struct list all_list;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -58,6 +61,7 @@ static int64_t global_ticks = INT64_MAX;
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
 int decay;
 int load_avg;
 
@@ -114,6 +118,7 @@ thread_init (void) {
 
 	/* Init the global thread context */
 	lock_init (&tid_lock);
+	list_init (&all_list);
 	list_init (&ready_list);
 	list_init (&sleep_list);
 	list_init (&destruction_req);
@@ -121,6 +126,7 @@ thread_init (void) {
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
+	list_push_back(&all_list, &initial_thread->all_elem);
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
 	initial_thread->recent_cpu = RECENT_CPU_DEFAULT;
@@ -215,6 +221,7 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	list_push_back(&all_list, &t->all_elem);
 	/* Add to run queue. */
 	thread_unblock (t);
 	preempt();
@@ -290,7 +297,7 @@ thread_wakeup(int64_t ticks) {
 
 		list_pop_front(&sleep_list);
 		thread_unblock(t);
-		preempt();
+		if(!thread_mlfqs) preempt();
 	}
 	intr_set_level(old_level);
 }
@@ -353,6 +360,7 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+	list_remove(&thread_current()->all_elem);
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -396,7 +404,6 @@ thread_set_nice (int nice UNUSED) {
 	enum intr_level old_level = intr_disable ();
 	thread_current ()->nice = nice;
 	calc_priority (thread_current ());
-	preempt ();
 	intr_set_level (old_level);
 }
 
@@ -687,61 +694,76 @@ preempt(void) {
     if (cur->priority < ready->priority) thread_yield();
 }
 
-void 
-calc_priority(struct thread *t) {
-	if (t == idle_thread) return;
-	t->priority = fixed_to_int_trunc(fixed_add_int(fixed_div_int(thread_get_recent_cpu(), -4),
-						PRI_MAX - thread_get_nice() * 2));
-	
-}
-
-void 
-calc_recent_cpu(struct thread *t) {
-	if (t == idle_thread) return ;
-  	int temp = fixed_add_int(fixed_mul(fixed_div(fixed_mul_int(thread_get_load_avg(), 2), 
-						fixed_add_int(fixed_mul_int(thread_get_load_avg(), 2), 1)), thread_get_recent_cpu()), thread_get_nice());
-	if ((temp >> 31) == (-1) >> 31) temp = 0;
-    
-	t->recent_cpu = temp;
-					
-}
-
-void 
-calc_decay(void){
-	decay = fixed_div(
-				fixed_mul_int(thread_get_load_avg(), 2),
-				fixed_mul_int(fixed_add_int(thread_get_load_avg(), 1), 1));
-}
-
-void 
-calc_load_avg(void) {
-    load_avg = fixed_add(
-		fixed_mul(fixed_div(int_to_fixed(59), int_to_fixed(60)),thread_get_load_avg()),
-		fixed_mul(fixed_div(int_to_fixed(1),int_to_fixed(60)), list_size(&ready_list)));
-}
-
-void 
-incr_recent_cpu(void){
-	if (thread_current() == idle_thread) return;
-	thread_current()->recent_cpu = fixed_add(thread_get_recent_cpu, int_to_fixed(1));
+void
+calc_priority(struct thread *cur) {
+	// In every fourth tick, recompute the priority of all threads
+	// priority = PRI_MAX – (recent_cpu / 4) – (nice * 2)
+	if(cur==idle_thread) return;
+	int tmp = fixed_to_int_trunc (
+		fixed_add_int(fixed_div_int (cur->recent_cpu, -4),
+	  	PRI_MAX - cur->nice * 2)
+	);
+	if (tmp > PRI_MAX) {
+		tmp = PRI_MAX;
+	} else if (tmp < PRI_MIN) {
+		tmp = PRI_MIN;
+	}
+	cur->priority = tmp;
 }
 
 void
-recalc_priority(void) {
+recalc_priority() {
+	// In every fourth tick, recompute the priority of all threads
+	// priority = PRI_MAX – (recent_cpu / 4) – (nice * 2)
 	struct list_elem *e;
-
-  for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e)) {
-    struct thread *t = list_entry (e, struct thread, elem);
-    calc_priority (t);
-  }
+	struct thread *cur;
+    for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
+    	cur = list_entry (e, struct thread, all_elem); 
+		calc_priority(cur);
+	}
 }
 
 void
-recalc_recent_cpu(void) {
-	struct list_elem *e;
+calc_load_avg() {
+	int ready_threads;
+  
+  	if (thread_current () == idle_thread)
+    	ready_threads = list_size (&ready_list);
+  	else
+    	ready_threads = list_size (&ready_list) + 1;
 
-  	for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e)) {
-		struct thread *t = list_entry (e, struct thread, elem);
-		calc_recent_cpu(t);
-  	}
+  	load_avg = fixed_add(fixed_mul (fixed_div (int_to_fixed (59), int_to_fixed (60)), load_avg), 
+               			 fixed_mul_int (fixed_div (int_to_fixed (1), int_to_fixed (60)), ready_threads));
 }
+void
+recalc_recent_cpu() {
+	// In every second, update every thread’s recent_cpu
+	// recent_cpu = decay * recent_cpu + nice,
+	struct list_elem *e;
+	struct thread *cur;
+    for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
+    	cur = list_entry (e, struct thread, all_elem);
+		calc_recent_cpu(cur);
+	}
+}
+
+void
+calc_recent_cpu(struct thread *cur) {
+	// In every second, update every thread’s recent_cpu
+	// recent_cpu = decay * recent_cpu + nice,
+	if (cur == idle_thread) return;
+	int tmp = fixed_mul_int(load_avg,2);
+	int decay = fixed_div(tmp , fixed_add_int(tmp,1));
+	int ret = fixed_add_int(fixed_mul(decay , cur->recent_cpu) , cur->nice);
+	if ((ret >> 31) == (-1) >> 31) {
+		ret = 0;
+	}
+	cur->recent_cpu = ret;
+}
+void
+incr_recent_cpu() {
+	// In every clock tick, increase the running thread’s recent_cpu by one.
+	struct thread * cur = thread_current();
+	cur->recent_cpu = fixed_add_int( cur->recent_cpu, 1 );
+}
+

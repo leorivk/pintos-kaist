@@ -133,7 +133,6 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 			/* 1초 : 100 ticks */
 			if (timer_ticks() % TIMER_FREQ == 0) {
 				calc_load_avg();
-				calc_decay();
 				recalc_recent_cpu();
 			}
 		}

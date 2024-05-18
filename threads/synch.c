@@ -196,7 +196,7 @@ lock_acquire (struct lock *lock) {
 	if (lock->holder) {
 		cur->wait_on_lock = lock;
 
-		if (thread_mlfqs) {
+		if (!thread_mlfqs) {
 			list_insert_ordered(&lock->holder->donations, &cur->d_elem, cmp_donation_priority, NULL);
 			donate_priority();
 		}

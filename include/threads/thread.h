@@ -103,6 +103,7 @@ struct thread
 	int priority;			   /* Priority. */
 	int64_t wakeup_tick;	   
 
+	struct list_elem all_elem;
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem; /* List element. */
 
@@ -176,7 +177,6 @@ void do_iret(struct intr_frame *tf);
 
 void calc_priority(struct thread *t);
 void calc_recent_cpu(struct thread *t);
-void calc_decay(void);
 void calc_load_avg(void);
 void incr_recent_cpu(void);
 void recalc_priority(void);
