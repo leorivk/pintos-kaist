@@ -766,3 +766,4 @@ incr_recent_cpu() {
 	cur->recent_cpu = fixed_add_int( cur->recent_cpu, 1 );
 }
 
+

@@ -419,3 +419,4 @@ void update_priority(void)
 	donations_root = list_entry(list_front(donations), struct thread, d_elem);
 	cur->priority = donations_root->priority;
 }
+

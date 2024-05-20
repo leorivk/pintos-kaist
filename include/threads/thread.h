@@ -183,3 +183,4 @@ void recalc_priority(void);
 void recalc_recent_cpu(void);
 
 #endif /* threads/thread.h */
+
