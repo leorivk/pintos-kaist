@@ -147,7 +147,7 @@ thread_init (void) {
 	lock_init (&tid_lock);			// 스레드 ID 잠금을 초기화한다.
 	list_init (&ready_list);		// 준비된 스레드 목록을 초기화한다.
 	list_init (&sleep_list);		// 준비된 슬립리스트를 초기화한다.
-	list_init (&all_list);		// 준비된 슬립리스트를 초기화한다.
+	list_init (&all_list);			// all_list를 초기화한다.
 	list_init (&destruction_req);	// 스레드 파괴 요청 목록을 초기화한다.
 
 	// 실행중인 스레드에 대한 스레드 구조체를 생성한다.
@@ -264,7 +264,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock(t);							// 준비된 큐에 스레드 추가
-	preempt();
+	if (!thread_mlfqs) preempt();
 
 	return tid;									// 생성된 스레드의 식별자 반환
 }
@@ -755,7 +755,6 @@ thread_wakeup(int64_t ticks) {
 	struct thread *unpacking_thread;
 	struct list_elem *min_ticks_thread = list_begin(&sleep_list);
 
-
 	while(!list_empty(&sleep_list)) {
 		unpacking_thread = list_entry(min_ticks_thread, struct thread, elem);
 
@@ -769,7 +768,8 @@ thread_wakeup(int64_t ticks) {
 }
 
 
-void update_recent_cpu() {
+void 
+update_recent_cpu() {
 	struct list_elem *e;
    	for (e = list_begin (&all_list); e != list_end(&all_list);  e = list_next(e)) {
       	struct thread *t = list_entry(e, struct thread, all_elem);

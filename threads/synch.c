@@ -45,7 +45,7 @@
 
 bool compare_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool compare_sema_priority(const struct list_elem *list_elem_a, const struct list_elem *list_elem_b, void *aux UNUSED);
-void donate (void);
+void donate_priority (void);
 void update_donation(void);
 
 
@@ -203,9 +203,9 @@ lock_acquire (struct lock *lock) {
   	if (lock->holder) {                     // 두번째 쓰레드부터는 이 조건에 걸리게 된다.
   	  	cur->wait_on_lock = lock;             // wait on lock에 해당 자원을 할당해줘서 대기중임을 알린다
   	  	// lock을 선점하고 있는 thread의 donations에 지금 쓰레드를 추가해줘서 대기중인 쓰래드가 있음을 명시한다
-  	  	list_insert_ordered (&lock->holder->donations, &cur->d_elem, compare_donation_priority, NULL);
+  	  	list_insert_ordered (&lock->holder->donations, &cur->d_elem, compare_donation_priority, NULL);  
       if (!thread_mlfqs) 
-  	  	   donate();                             // 그 후 thread의 우선순위를 결정하는 donate 함수 실행
+  	  	   donate_priority();                             // 그 후 thread의 우선순위를 결정하는 donate_priority 함수 실행
   	}
 
   	sema_down (&lock->semaphore);
@@ -251,7 +251,7 @@ lock_release (struct lock *lock) {
       /* donation 리스트를 순회하며 */
       for (e = list_begin (&cur->donations); e != list_end (&cur->donations);) {
          struct thread *t = list_entry (e, struct thread, d_elem);
-         /* 인자로 받은 lock을 원해서 donate를 한 경우라면 */
+         /* 인자로 받은 lock을 원해서 donate_priority를 한 경우라면 */
          if (t->wait_on_lock == lock)
             e = list_remove (&t->d_elem);
          else
@@ -319,7 +319,6 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	// list_insert_ordered(&cond->waiters, &waiter.elem, compare_sema_priority, NULL);
 	list_push_back(&cond->waiters, &waiter.elem);      // 사실상 sema down을 해주기 전엔 thread가 할당되지 않았음으로 list_insert_ordered가 의미 없음
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
@@ -391,7 +390,7 @@ compare_sema_priority(const struct list_elem *list_elem_a,
 }
 
 void
-donate(void) {
+donate_priority(void) {
     struct thread *cur = thread_current();
     for (int i=0; i<8; i++) {
         if (cur->wait_on_lock == NULL) return;
