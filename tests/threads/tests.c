@@ -34,7 +34,7 @@ static const struct test tests[] =
     {"mlfqs-load-avg", test_mlfqs_load_avg},
     {"mlfqs-recent-1", test_mlfqs_recent_1},
     {"mlfqs-fair-2", test_mlfqs_fair_2},
-    {"mlfqs-fair-20", test_mlfqs_fair_2},
+    {"mlfqs-fair-20", test_mlfqs_fair_20},
     {"mlfqs-nice-2", test_mlfqs_nice_2},
     {"mlfqs-nice-10", test_mlfqs_nice_10},
     {"mlfqs-block", test_mlfqs_block},

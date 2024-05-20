@@ -236,12 +236,19 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+    struct thread *cur = thread_current();
+    struct list_elem *e;
 
-	if (!thread_mlfqs) {
-		remove_donor(lock);
-		update_priority();
-	}
-
+    if (!thread_mlfqs) {
+        for (e = list_begin (&cur->donations); e != list_end (&cur->donations);) {
+           	struct thread *t = list_entry (e, struct thread, d_elem);
+            if (t->wait_on_lock == lock)
+        		e = list_remove (&t->d_elem);
+         	else
+            	e = list_next(&t->d_elem);
+     	}
+      	update_priority();
+   	}
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
@@ -384,39 +391,16 @@ void donate_priority(void)
 	}
 }
 
-void remove_donor(struct lock *lock)
-{
-	struct list *donations = &(thread_current()->donations); 
-	struct list_elem *cur;							 
-	struct thread *donor;
-
-	if (list_empty(donations)) return;
-
-	cur = list_front(donations);
-
-	while (cur != list_end(donations))
-	{
-		donor = list_entry(cur, struct thread, d_elem);
-		if (donor->wait_on_lock == lock) 
-			list_remove(&donor->d_elem); 
-        cur = list_next(cur);
-	}
+void
+update_priority() {
+   	struct thread *cur = thread_current();
+   	struct thread *max;
+   	cur->priority = cur->init_priority;
+   
+   	if (!list_empty(&cur->donations)) {
+      	max = list_entry(list_front(&cur->donations), struct thread, d_elem);
+  
+     	if (max->priority > cur->priority) 
+        	cur->priority = max->priority;
+   }
 }
-
-
-void update_priority(void)
-{
-	struct thread *cur = thread_current();
-	struct list *donations = &(thread_current()->donations);
-	struct thread *donations_root;
-
-	if (list_empty(donations)) 
-	{
-		cur->priority = cur->init_priority; 
-		return;
-	}
-
-	donations_root = list_entry(list_front(donations), struct thread, d_elem);
-	cur->priority = donations_root->priority;
-}
-

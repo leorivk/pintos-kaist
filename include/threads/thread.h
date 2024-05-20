@@ -165,7 +165,6 @@ void preempt(void);
 
 bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 void donate_priority(void);
-void remove_donor(struct lock *lock);
 void update_priority(void);
 
 int thread_get_nice(void);
@@ -183,4 +182,3 @@ void recalc_priority(void);
 void recalc_recent_cpu(void);
 
 #endif /* threads/thread.h */
-

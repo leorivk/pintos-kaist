@@ -402,7 +402,7 @@ thread_set_nice (int nice UNUSED) {
 	enum intr_level old_level = intr_disable ();
 	thread_current ()->nice = nice;
 	calc_priority (thread_current ());
-	preempt();
+	// preempt();
 	intr_set_level (old_level);
 }
 
@@ -765,5 +765,4 @@ incr_recent_cpu() {
 	struct thread * cur = thread_current();
 	cur->recent_cpu = fixed_add_int( cur->recent_cpu, 1 );
 }
-
 
