@@ -90,11 +90,8 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
-
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	thread_sleep(timer_ticks() + ticks);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -120,12 +117,33 @@ void
 timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+	if (thread_mlfqs) {
+
+		// In every clock tick, increase the running thread’s recent_cpu by one.
+		incr_recent_cpu();
+
+		// In every fourth tick, recompute the priority of all threads
+		if (ticks % TIME_SLICE == 0) {
+			update_priority();
+		}
+
+		// In every second, update every thread’s recent_cpu
+		if (ticks % TIMER_FREQ == 0) {
+			calc_load_avg();
+			update_recent_cpu();
+		}
+    }
+
+	if (get_global_ticks() <= ticks) {
+		thread_wakeup(ticks);
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

@@ -28,6 +28,10 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+#define RECENT_CPU_DEFAULT 0                  /* Default priority. */
+#define NICE_DEFAULT 0                      /* Highest priority. */
+#define TIME_SLICE 4            /* # of timer ticks to give each thread. */
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -91,9 +95,19 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int init_priority;                  /* init_Priority. */
+	int64_t local_ticks;				// local tick
+
+	struct lock *wait_on_lock;			// 내가 필요로 하는 리소스를 저장하는 lock
+	struct list donations;
+	struct list_elem d_elem;              /* List element. */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem all_elem;
+
+	int recent_cpu;
+	int nice;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -130,11 +144,18 @@ struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
 
+void set_global_ticks();
+int64_t get_global_ticks();
+
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void thread_sleep(int64_t ticks);
+void thread_wakeup(int64_t ticks);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+bool compare_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+void preempt(void);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
@@ -143,4 +164,10 @@ int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
 
+void calc_priority(struct thread *t);
+void calc_recent_cpu(struct thread *t);
+void calc_load_avg(void);
+void incr_recent_cpu(void);
+void update_recent_cpu();
+void update_priority();
 #endif /* threads/thread.h */
