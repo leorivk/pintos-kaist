@@ -277,7 +277,6 @@ thread_sleep(int64_t ticks) {
 	cur->wakeup_tick = ticks;
 
 	list_insert_ordered(&sleep_list, &cur->elem, cmp_thread_ticks, NULL);
-
 	thread_block();
 	intr_set_level (old_level);						
 }
@@ -297,7 +296,6 @@ thread_wakeup(int64_t ticks) {
 
 		list_pop_front(&sleep_list);
 		thread_unblock(t);
-		if(!thread_mlfqs) preempt();
 	}
 	intr_set_level(old_level);
 }
@@ -404,6 +402,7 @@ thread_set_nice (int nice UNUSED) {
 	enum intr_level old_level = intr_disable ();
 	thread_current ()->nice = nice;
 	calc_priority (thread_current ());
+	preempt();
 	intr_set_level (old_level);
 }
 
