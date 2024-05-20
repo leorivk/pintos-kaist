@@ -158,8 +158,6 @@ thread_init (void) {
 	initial_thread->tid = allocate_tid ();				// 스레드 파괴요청 목록을 초기화한다.
 	list_push_back(&all_list, &(initial_thread->all_elem));
 
-
-
 	lock_init(&sleep_lock);
 }
 
@@ -718,8 +716,8 @@ allocate_tid (void) {
 
 bool 
 compare_local_ticks(const struct list_elem *a,
-                         const struct list_elem *b,
-                         void *aux) {
+                    const struct list_elem *b,
+                    void *aux) {
     struct thread *thread_a = list_entry(a, struct thread, elem);
     struct thread *thread_b = list_entry(b, struct thread, elem);
     

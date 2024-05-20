@@ -365,10 +365,10 @@ bool
 compare_donation_priority(const struct list_elem *a,
                           const struct list_elem *b,
                           void *aux) {
-    struct thread *thread_a = list_entry(a, struct thread, d_elem);
-    struct thread *thread_b = list_entry(b, struct thread, d_elem);
+   struct thread *thread_a = list_entry(a, struct thread, d_elem);
+   struct thread *thread_b = list_entry(b, struct thread, d_elem);
     
-    return thread_a->priority > thread_b->priority;
+   return thread_a->priority > thread_b->priority;
 }
 
 
@@ -377,46 +377,43 @@ compare_sema_priority(const struct list_elem *list_elem_a,
                       const struct list_elem *list_elem_b,
                       void *aux UNUSED) {
 
-    struct semaphore_elem *sema_a = list_entry(list_elem_a, struct semaphore_elem, elem);
-    struct semaphore_elem *sema_b = list_entry(list_elem_b, struct semaphore_elem, elem);
+   struct semaphore_elem *sema_a = list_entry(list_elem_a, struct semaphore_elem, elem);
+   struct semaphore_elem *sema_b = list_entry(list_elem_b, struct semaphore_elem, elem);
 
-    struct list *waiters_a = &(sema_a->semaphore.waiters);
-    struct list *waiters_b = &(sema_b->semaphore.waiters);
+   struct list *waiters_a = &(sema_a->semaphore.waiters);
+   struct list *waiters_b = &(sema_b->semaphore.waiters);
 
-    struct thread *a = list_entry(list_begin(waiters_a),struct thread, elem);
-    struct thread *b = list_entry(list_begin(waiters_b),struct thread, elem);
+   struct thread *a = list_entry(list_begin(waiters_a),struct thread, elem);
+   struct thread *b = list_entry(list_begin(waiters_b),struct thread, elem);
 
-    return a->priority > b->priority;
+   return a->priority > b->priority;
 }
 
 void
 donate_priority(void) {
-    struct thread *cur = thread_current();
-    for (int i=0; i<8; i++) {
-        if (cur->wait_on_lock == NULL) return;
-        if (cur->priority > cur->wait_on_lock->holder->priority) {
-            cur->wait_on_lock->holder->priority = cur->priority; // priority 변경
-            cur = cur->wait_on_lock->holder; // cur = next(cur); 와 비슷한 느낌.
-        } else {
-            return;
-        }
-    }
+   struct thread *cur = thread_current();
+   struct thread *holder;
+   for (int i=0; i<8; i++) {
+      if (cur->wait_on_lock == NULL) return;
+      holder = cur->wait_on_lock->holder;
+      if (cur->priority > holder->priority) {
+         holder->priority = cur->priority; // priority 변경
+         cur = holder; // cur = next(cur); 와 비슷한 느낌.
+      }
+   }
 }
 
 void
-update_donation() {								// 멀티플 상황에서 나보다 더 우선순위가 큰 쓰레드가 있으면 내 우선순위를 update해준다
-    struct thread *cur = thread_current();
-    struct list_elem *e;
-    int max_priority = 0;
-    cur->priority = cur->init_priority;
-    if (!list_empty(&cur->donations)) {
-        list_sort(&cur->donations, compare_donation_priority, 0);
-        e = list_front(&cur->donations);
-        struct thread *max = list_entry(e, struct thread, d_elem);
-        max_priority = max->priority;
-    }
-    // list가 비어있는 경우를 생각해서, 미리 cur->priority = cur->original_priority 를 수행해놔야함.
-    if (max_priority > cur->priority) {
-        cur->priority = max_priority;
-    }
+update_donation() {
+   struct thread *cur = thread_current();
+   struct thread *max;
+   struct list_elem *e;
+   cur->priority = cur->init_priority;
+   if (!list_empty(&cur->donations)) {
+      e = list_front(&cur->donations);
+      max = list_entry(e, struct thread, d_elem);
+   }
+   if (max->priority > cur->priority) {
+      cur->priority = max->priority;
+   }
 }
