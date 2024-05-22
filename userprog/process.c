@@ -697,9 +697,9 @@ argument_stack(char *parse[], int count, struct intr_frame *_if) {
 		parse[i] = _if->rsp;
 	}
 
-	while (_if->rsp % 8) {
-		_if->rsp--;
-		memset(_if->rsp, 0, sizeof(uint8_t));
+	uint8_t padding = _if->rsp % 8;
+	if (padding) {
+		memset(_if->rsp -= (sizeof(uint8_t) * padding), 0, sizeof(uint8_t) * padding);
 	}
 
 	_if->rsp -= sizeof(uintptr_t);
