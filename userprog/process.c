@@ -22,6 +22,9 @@
 #include "vm/vm.h"
 #endif
 
+#define POINTER_SIZE 8;
+
+static void argument_stack(char *parse[], int count, struct intr_frame *_if);
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
@@ -37,7 +40,10 @@ process_init (void) {
  * The new thread may be scheduled (and may even exit)
  * before process_create_initd() returns. Returns the initd's
  * thread id, or TID_ERROR if the thread cannot be created.
- * Notice that THIS SHOULD BE CALLED ONCE. */
+ * Notice that THIS SHOULD BE CALLED ONCE.
+ * 현재 코드는 process가 종료되길 기다리지 않는다. -> 수정해야함
+ * process_create_initd함수는 file_name을 인자로 받아 파일 이름을 가져온다 ex) a.out, ls
+ * thread_create를 호출해 새 스레드를 생성한다 */
 tid_t
 process_create_initd (const char *file_name) {
 	char *fn_copy;
@@ -159,7 +165,8 @@ error:
 }
 
 /* Switch the current execution context to the f_name.
- * Returns -1 on fail. */
+ * Returns -1 on fail. 
+ * 1. 실행하려는 바이너리 파일의 이름을 인자로 받는다. */
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
@@ -176,14 +183,27 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
-	/* And then load the binary */
+	char *token_arr[100];
+	char *save_ptr, *token;
+	int count = 0;
+
+	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+		token_arr[count++] = token;
+
+	/* And then load the binary 
+ 	 * 2. 디스크에서 해당 바이너리 파일을 메모리로 로드한다 -> load() */
 	success = load (file_name, &_if);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
 	if (!success)
 		return -1;
 
+	argument_stack(&token_arr, count, &_if);
+
+	/* Debug Code */
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+
+	palloc_free_page (file_name);
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
@@ -199,11 +219,15 @@ process_exec (void *f_name) {
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
+// 구현해야 할 함수
 int
 process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while (true) {
+
+	}
 	return -1;
 }
 
@@ -319,10 +343,12 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Loads an ELF executable from FILE_NAME into the current thread.
  * Stores the executable's entry point into *RIP
  * and its initial stack pointer into *RSP.
- * Returns true if successful, false otherwise. */
+ * Returns true if successful, false otherwise. 
+ * if_ -> 인터럽트 프레임 인터럽트가 발생했을때 레지스터의 정보를 저장함 */
 static bool
 load (const char *file_name, struct intr_frame *if_) {
 	struct thread *t = thread_current ();
+	// ELF 헤더
 	struct ELF ehdr;
 	struct file *file = NULL;
 	off_t file_ofs;
@@ -335,14 +361,18 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
-	/* Open executable file. */
+	/* Open executable file. 
+	 * 파일을 Open한다 */
 	file = filesys_open (file_name);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
 
-	/* Read and verify executable header. */
+	/* 
+	 * Read and verify executable header. 
+	 * header 파일을 읽고 유효한지 체크한다.
+	 */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
 			|| ehdr.e_type != 2
@@ -354,19 +384,29 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	}
 
-	/* Read program headers. */
+	/* Read program headers. 
+	 * header파일 구문을 분석한다 
+	 * 파일 오프셋 설정 및 초기화 */
 	file_ofs = ehdr.e_phoff;
+	/* 헤더 테이블의 구조가 고정된 크기의 엔트리 배열로 되어있기 때문에
+	 * 이런식의 순회가 가능하다 */
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
 
+		// 파일 offset이 유효한지 확인
 		if (file_ofs < 0 || file_ofs > file_length (file))
 			goto done;
-		file_seek (file, file_ofs);
 
+		// 그때 메모장으로 예시로 들었던 file_seek
+		file_seek (file, file_ofs);
 		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
 			goto done;
+
+		// file_ofs 갱신
 		file_ofs += sizeof phdr;
+		// 프로그램 헤더의 타입에 따라 다른 처리를 합니다.
 		switch (phdr.p_type) {
+			// 아래 3개는 무시합니다.
 			case PT_NULL:
 			case PT_NOTE:
 			case PT_PHDR:
@@ -374,18 +414,23 @@ load (const char *file_name, struct intr_frame *if_) {
 			default:
 				/* Ignore this segment. */
 				break;
+			// 아래 3개는 로드할 수 없는 타입으로 goto done으로 이동합니다.
 			case PT_DYNAMIC:
 			case PT_INTERP:
 			case PT_SHLIB:
 				goto done;
+			// 실제로 메모리에 적재해야 하는 타입입니다.
 			case PT_LOAD:
-				if (validate_segment (&phdr, file)) {
-					bool writable = (phdr.p_flags & PF_W) != 0;
+				if (validate_segment (&phdr, file)) { // 세그먼트가 유효한지 검증
+					bool writable = (phdr.p_flags & PF_W) != 0; // 세그먼트 쓰기가 가능한지 확인
+
+					// 파일과 메모리 페이지의 위치를 설정
 					uint64_t file_page = phdr.p_offset & ~PGMASK;
 					uint64_t mem_page = phdr.p_vaddr & ~PGMASK;
 					uint64_t page_offset = phdr.p_vaddr & PGMASK;
+
 					uint32_t read_bytes, zero_bytes;
-					if (phdr.p_filesz > 0) {
+					if (phdr.p_filesz > 0) {	// read_bytes와 zero_bytes를 계산한다. 
 						/* Normal segment.
 						 * Read initial part from disk and zero the rest. */
 						read_bytes = page_offset + phdr.p_filesz;
@@ -397,7 +442,7 @@ load (const char *file_name, struct intr_frame *if_) {
 						read_bytes = 0;
 						zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
 					}
-					if (!load_segment (file, file_page, (void *) mem_page,
+					if (!load_segment (file, file_page, (void *) mem_page, // 세그먼트를 메모리에 로드
 								read_bytes, zero_bytes, writable))
 						goto done;
 				}
@@ -407,16 +452,19 @@ load (const char *file_name, struct intr_frame *if_) {
 		}
 	}
 
-	/* Set up stack. */
+	/* Set up stack. 
+	 * 사용자 스택의 최상위 포인터를 가져온다 -> 여기다가 매개변수 파싱한걸 쌓기 위해 */
 	if (!setup_stack (if_))
 		goto done;
 
-	/* Start address. */
+	/* Start address. 
+	 * 해당 바이너리 파일에서 실행할 명령어의 위치를 가져온다. 
+	 * rip = 다음 실행할 명령어의 주소 보관함 */
 	if_->rip = ehdr.e_entry;
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-
+	
 	success = true;
 
 done:
@@ -548,6 +596,7 @@ setup_stack (struct intr_frame *if_) {
 		else
 			palloc_free_page (kpage);
 	}
+	// 실패하면 -1 return
 	return success;
 }
 
@@ -637,3 +686,33 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 #endif /* VM */
+
+static void
+argument_stack(char *parse[], int count, struct intr_frame *_if) {
+
+	for (int i = count - 1; i >= 0; i--) {
+		size_t len = strlen(parse[i]) + 1;
+		_if->rsp -= len;
+		memcpy(_if->rsp, parse[i], len);
+		parse[i] = _if->rsp;
+	}
+
+	while (_if->rsp % 8) {
+		_if->rsp--;
+		memset(_if->rsp, 0, sizeof(uint8_t));
+	}
+
+	_if->rsp -= sizeof(uintptr_t);
+	memset(_if->rsp, 0, sizeof(uintptr_t));
+
+	for (int i = count - 1; i >= 0; i--) {
+		_if->rsp -= sizeof(uintptr_t);
+		_if->rsp = memcpy(_if->rsp, &parse[i], sizeof(uintptr_t));
+	}
+
+	_if->R.rsi = _if->rsp;
+	_if->R.rdi = count;
+
+	_if->rsp -= sizeof(uintptr_t);
+	memset(_if->rsp, 0, sizeof(uintptr_t));
+}
