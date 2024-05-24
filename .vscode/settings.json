@@ -7,6 +7,13 @@
         "fixed_point.h": "c",
         "string.h": "c",
         "vm.h": "c",
-        "intrinsic.h": "c"
+        "intrinsic.h": "c",
+        "syscall.h": "c",
+        "filesys.h": "c",
+        "process.h": "c",
+        "console.h": "c",
+        "file.h": "c",
+        "stdio.h": "c",
+        "vga.h": "c"
     }
 }

@@ -2,6 +2,8 @@
 #define THREADS_THREAD_H
 #define USERPROG
 
+#define thread_entry(tid) ((struct thread*) &tid)
+
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
@@ -116,9 +118,15 @@ struct thread
 	int nice;                   
     int recent_cpu;
 
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
+
+	// file fdt 선언
+	int **fdt;
+	int next_fd;
+
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */

@@ -24,11 +24,17 @@
 
 #define POINTER_SIZE 8;
 
+void process_exit_file(void);
+int process_add_file(struct file *f);
+struct file *process_get_file(int fd);
+void process_close_file(int fd);
+
 static void argument_stack(char *parse[], int count, struct intr_frame *_if);
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+void process_exit(void);
 
 /* General process initializer for initd and other process. */
 static void
@@ -56,8 +62,12 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	char *save_ptr, *token;
+
+	token = strtok_r(file_name, " ", &save_ptr); 
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (token, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -183,17 +193,17 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
-	char *token_arr[100];
+	char *token_arr[128];
 	char *save_ptr, *token;
 	int count = 0;
 
-	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
-		token_arr[count++] = token;
-
+	for (token = strtok_r(file_name, " ", &save_ptr); 
+		 token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+		 token_arr[count++] = token;
 	/* And then load the binary 
  	 * 2. 디스크에서 해당 바이너리 파일을 메모리로 로드한다 -> load() */
-	success = load (file_name, &_if);
 
+	success = load (file_name, &_if);
 	/* If load failed, quit. */
 	if (!success)
 		return -1;
@@ -201,7 +211,7 @@ process_exec (void *f_name) {
 	argument_stack(&token_arr, count, &_if);
 
 	/* Debug Code */
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	palloc_free_page (file_name);
 	/* Start switched process. */
@@ -225,8 +235,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while (true) {
-
+	for (int i = 0; i < 500000000; i++) {
 	}
 	return -1;
 }
@@ -715,4 +724,50 @@ argument_stack(char *parse[], int count, struct intr_frame *_if) {
 
 	_if->rsp -= sizeof(uintptr_t);
 	memset(_if->rsp, 0, sizeof(uintptr_t));
+}
+
+void 
+process_exit_file(void) {
+	struct thread *cur = thread_current();
+    for (int i = FDT_PAGES; i <= FDT_COUNT_LIMIT; i++) {
+		if (cur->fdt[i] != NULL) {
+			process_close_file(i);
+		}
+    }
+}
+
+int 
+process_add_file(struct file *f) {
+
+	struct thread *cur = thread_current();
+ 	int tmp_fd;
+
+    for (tmp_fd = FDT_PAGES; tmp_fd <= FDT_COUNT_LIMIT; tmp_fd++) {
+		if (cur->fdt[tmp_fd] == NULL) {
+			cur->fdt[tmp_fd] = f;
+			cur->next_fd = tmp_fd;
+			return cur->next_fd;
+		}
+    }
+	return -1;
+}
+
+struct file 
+*process_get_file(int fd) {
+	if (fd < FDT_PAGES || fd > FDT_COUNT_LIMIT)
+		return NULL;
+	return thread_current()->fdt[fd];
+}
+
+void 
+process_close_file(int fd) {
+	if (fd < FDT_PAGES || fd > FDT_COUNT_LIMIT || fd == NULL)
+		return NULL;
+
+	struct thread *cur = thread_current();
+	struct file *open_file = process_get_file(fd);
+	if (open_file == NULL) return NULL;
+
+	cur->fdt[fd] = NULL;
+	file_close(open_file);
 }
