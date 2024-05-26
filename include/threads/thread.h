@@ -136,6 +136,7 @@ struct thread
 
 	struct semaphore exit_sema;
 	struct semaphore load_sema;
+	struct semaphore wait_sema;
 	int exit_status;
 
 	struct intr_frame parent_if;

@@ -232,6 +232,7 @@ thread_create (const char *name, int priority,
 	// 세마포어 초기화
 	sema_init(&t->exit_sema, 0);
 	sema_init(&t->load_sema, 0);
+	sema_init(&t->wait_sema, 0);
 
 	// children
 	list_push_back(&thread_current()->children_list, &t->child_elem);

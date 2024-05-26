@@ -27,6 +27,7 @@ void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
 int fork (const char *thread_name);
+int wait (int pid);
 void check_addr(char *addr);
 
 struct lock filesys_lock;
@@ -73,15 +74,15 @@ void syscall_handler(struct intr_frame *f UNUSED)
 	case SYS_EXIT:
 		exit(f->R.rdi);
 		break;
-	// case SYS_FORK:
-	// 	f->R.rax = fork(f->R.rdi, f);
-	// 	break;
+	case SYS_FORK:
+		f->R.rax = fork(f->R.rdi);
+		break;
 	// case SYS_EXEC:
 	// 	f->R.rax = exec(f->R.rdi);
 	// 	break;
-	// case SYS_WAIT:
-	// 	f->R.rax = wait(f->R.rdi);
-	// 	break;
+	case SYS_WAIT:
+		f->R.rax = wait(f->R.rdi);
+		break;
 	case SYS_CREATE:
 		f->R.rax = create(f->R.rdi, f->R.rsi);
 		break;
@@ -116,6 +117,15 @@ void syscall_handler(struct intr_frame *f UNUSED)
 	// 	munmap(f->R.rdi);
 	// 	break;
 	}
+}
+
+int fork (const char *thread_name) {
+	struct thread *cur = thread_current();
+	return process_fork(thread_name, &cur->tf);
+}
+
+int wait (int pid) {
+	return process_wait(pid);
 }
 
 void 

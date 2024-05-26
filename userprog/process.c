@@ -123,6 +123,9 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	void *newpage;
 	bool writable;
 
+	/* TODO: duplicate_pte 함수 작동 영역 및 작동 방식 파악하기 (팀원끼리 모여서) */
+
+
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
 
 	/* 2. Resolve VA from the parent's page map level 4. */
@@ -181,10 +184,17 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
-	// 모든 fdt를 순회하면서 file_duplicate() 함수로 file을 복제하고 current.fdt로 복제하면 된다.
+	// 부모의 모든 fdt를 순회하면서 file_duplicate() 함수로 file을 복제하고 current.fdt로 복제하면 된다.
+	for (int i = FDT_PAGES; i < FDT_COUNT_LIMIT; i++) {
+		struct file *file = parent->fdt[i];
+		if (file == NULL) 
+			continue;
+		file = file_duplicate(file);
+		current->fdt[i] = file;
+	}
 
 	// 그렇게 로드가 끝나면 sema_up으로 대기중인 무모 프로세스의 lock을 풀어준다.
-
+	sema_up(&current->load_sema);
 
 	process_init ();
 
@@ -256,28 +266,21 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	// struct thread *cur = thread_current();
-	// struct thread *child = thread_entry(child_tid);
-	// enum intr_level old_level = intr_disable();
-	// sema_down(&cur->load_sema);
-	// intr_set_level(old_level);
-	// list_remove(&child->child_elem);
-	// return child_tid;
-
-
-	for (int i = 0; i < 500000000; i++) {
-	}
-	return -1;
+	// 애초에 전제가 잘못됐음 부모의 sema를 down하는것이 아니라 자식의 sema를 down하는 거였음
+	struct thread *child_thread = get_child_process(child_tid);
+	sema_down(&child_thread->wait_sema);
+	return 0;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
-	struct thread *curr = thread_current ();
+	struct thread *cur = thread_current ();
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	sema_up(&cur->wait_sema);
 
 	process_cleanup ();
 }
@@ -766,6 +769,7 @@ process_exit_file(void) {
 			process_close_file(i);
 		}
     }
+	sema_up(&cur->wait_sema);
 }
 
 int 
