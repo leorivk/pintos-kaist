@@ -1,3 +1,4 @@
+#include "userprog/syscall.h"
 #include <stdio.h>
 #include "filesys/file.h"
 #include <syscall-nr.h>
@@ -125,7 +126,7 @@ halt (void) {
 void 
 exit (int status) {
 	struct thread *cur = thread_current();
-    // cur->status = status;                         
+	cur->exit_status = status;
 	printf("%s: exit(%d)\n", cur->name, status);
 	thread_exit();
 }
@@ -133,8 +134,22 @@ exit (int status) {
 int
 exec(const char *cmd_line) {
 	tid_t tid = process_create_initd(cmd_line);
-	struct thread *cur = thread_entry(tid);
+	return process_wait(tid);
 }
+
+// int exec(const char *cmd_line)
+// {
+// 	check_address(cmd_line);
+
+// 	char *cmd_line_copy;
+// 	cmd_line_copy = palloc_get_page(0);
+// 	if (cmd_line_copy == NULL)
+// 		exit(-1);							  
+// 	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
+
+// 	if (process_exec(cmd_line_copy) == -1)
+// 		exit(-1);
+// }
 
 bool 
 create (const char *file, unsigned initial_size) {
@@ -223,16 +238,16 @@ write (int fd, const void *buffer, unsigned size) {
 void 
 seek (int fd, unsigned position) {
 	struct file *open_file = process_get_file(fd);
-	if (fd < 2)
+	if (fd < FDT_PAGES || fd > FDT_COUNT_LIMIT)
 		return;
 	if (open_file)
-		file_tell(open_file);
+		file_seek(open_file, position);
 }
 
 unsigned 
 tell (int fd) {
 	struct file *open_file = process_get_file(fd);
-	if (fd < 2)
+	if (fd < FDT_PAGES || fd > FDT_COUNT_LIMIT)
 		return;
 	if (open_file)
 		return file_tell(open_file);
@@ -247,18 +262,8 @@ close (int fd) {
 	process_close_file(fd);
 }
 
-int 
-fork (const char *thread_name) {
-}
-
 void 
 check_addr(char *addr) {
 	struct thread *cur = thread_current();
-	if (addr == NULL || !is_user_vaddr(addr) || pml4_get_page(cur->pml4, addr) == NULL) exit(-1);
-}
-
-void
-check_address(char *addr) {
-	struct thread* cur = thread_current();
 	if (addr == NULL || !is_user_vaddr(addr) || pml4_get_page(cur->pml4, addr) == NULL) exit(-1);
 }

@@ -229,6 +229,13 @@ thread_create (const char *name, int priority,
 	t->fdt[1] = 1;
 	t->next_fd = FDT_PAGES;
 
+	// 세마포어 초기화
+	sema_init(&t->exit_sema, 0);
+	sema_init(&t->load_sema, 0);
+
+	// children
+	list_push_back(&thread_current()->children_list, &t->child_elem);
+
 	list_push_back(&all_list, &t->all_elem);
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -366,7 +373,8 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
-	list_remove(&thread_current()->all_elem);
+	struct thread *cur = thread_current();
+	list_remove(&cur->all_elem);
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -509,6 +517,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	t->wait_on_lock = NULL;
 	list_init(&(t->donations)); // Initializes data structure for priority dontation
+
+	list_init(&(t->children_list));
 
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;

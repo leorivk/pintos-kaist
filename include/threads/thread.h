@@ -125,7 +125,20 @@ struct thread
 
 	// file fdt 선언
 	int **fdt;
-	int next_fd;
+	int next_fd; 
+
+	// 부모는 자식을 해당 리스트에 추가된다.
+	struct list children_list;
+	struct list_elem child_elem;
+
+	// 자식은 부모의 pid를 저장한다.
+	int parant_pid;
+
+	struct semaphore exit_sema;
+	struct semaphore load_sema;
+	int exit_status;
+
+	struct intr_frame parent_if;
 
 #endif
 #ifdef VM

@@ -28,6 +28,8 @@ void process_exit_file(void);
 int process_add_file(struct file *f);
 struct file *process_get_file(int fd);
 void process_close_file(int fd);
+struct thread *get_child_process(int pid);
+struct thread *remove_child_process(struct thread *cp);
 
 static void argument_stack(char *parse[], int count, struct intr_frame *_if);
 static void process_cleanup (void);
@@ -92,8 +94,22 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+
+	struct thread *cur = thread_current();
+	memcpy(&cur->parent_if, if_, sizeof(struct intr_frame));
+
+	tid_t pid = thread_create (name, PRI_DEFAULT, __do_fork, cur); // 부모
+	if (pid == TID_ERROR)
+		return TID_ERROR;
+
+	struct thread *child = get_child_process(pid);
+	sema_down(&child->load_sema);
+
+	if (child->exit_status == TID_ERROR) {
+		return TID_ERROR;
+	}
+
+	return pid;
 }
 
 #ifndef VM
@@ -133,12 +149,12 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       That is, you are required to pass second argument of process_fork to
  *       this function. */
 static void
-__do_fork (void *aux) {
+__do_fork (void *aux) {			
 	struct intr_frame if_;
 	struct thread *parent = (struct thread *) aux;
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-	struct intr_frame *parent_if;
+	struct intr_frame *parent_if = &parent->parent_if; // 저장해둔 parent_if
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
@@ -164,6 +180,11 @@ __do_fork (void *aux) {
 	 * TODO:       in include/filesys/file.h. Note that parent should not return
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
+
+	// 모든 fdt를 순회하면서 file_duplicate() 함수로 file을 복제하고 current.fdt로 복제하면 된다.
+
+	// 그렇게 로드가 끝나면 sema_up으로 대기중인 무모 프로세스의 lock을 풀어준다.
+
 
 	process_init ();
 
@@ -235,6 +256,15 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	// struct thread *cur = thread_current();
+	// struct thread *child = thread_entry(child_tid);
+	// enum intr_level old_level = intr_disable();
+	// sema_down(&cur->load_sema);
+	// intr_set_level(old_level);
+	// list_remove(&child->child_elem);
+	// return child_tid;
+
+
 	for (int i = 0; i < 500000000; i++) {
 	}
 	return -1;
@@ -479,6 +509,8 @@ load (const char *file_name, struct intr_frame *if_) {
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
+	struct thread *parent = thread_entry(t->parant_pid);
+
 	return success;
 }
 
@@ -771,3 +803,17 @@ process_close_file(int fd) {
 	cur->fdt[fd] = NULL;
 	file_close(open_file);
 }
+
+struct thread *get_child_process(int pid) {
+	struct thread *cur = thread_current();
+	for (struct list_elem *e = list_begin(&cur->children_list); e != list_end(&cur->children_list); e = list_next(e)) {
+		struct thread *t = list_entry(e, struct thread, child_elem);
+		if (t->tid == pid)
+			return t;
+	}
+	return NULL;
+}
+
+// struct thread *remove_child_process(struct thread *cp) {
+// 	list_remove(&cp->child_elem);
+// }
