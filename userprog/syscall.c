@@ -26,7 +26,6 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
-int fork (const char *thread_name);
 int wait (int pid);
 void check_addr(char *addr);
 
@@ -75,6 +74,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		exit(f->R.rdi);
 		break;
 	case SYS_FORK:
+		thread_current()->parent_if = f;
 		f->R.rax = fork(f->R.rdi);
 		break;
 	// case SYS_EXEC:
@@ -119,9 +119,8 @@ void syscall_handler(struct intr_frame *f UNUSED)
 	}
 }
 
-int fork (const char *thread_name) {
-	struct thread *cur = thread_current();
-	return process_fork(thread_name, &cur->tf);
+tid_t fork(const char *thread_name) {
+	return process_fork(thread_name, NULL);
 }
 
 int wait (int pid) {

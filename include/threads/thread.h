@@ -139,7 +139,7 @@ struct thread
 	struct semaphore wait_sema;
 	int exit_status;
 
-	struct intr_frame parent_if;
+	struct intr_frame *parent_if;
 
 #endif
 #ifdef VM
