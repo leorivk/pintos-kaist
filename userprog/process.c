@@ -59,7 +59,7 @@ process_create_initd (const char *file_name) {
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
-	fn_copy = palloc_get_page (0);
+	fn_copy = palloc_get_page (PAL_ZERO);
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
@@ -94,17 +94,13 @@ initd (void *f_name) {
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	/* Clone current thread to new thread.*/
-
 	struct thread *cur = thread_current();
 
-	tid_t pid = thread_create (name, PRI_DEFAULT, __do_fork, cur); // 부모
+	tid_t pid = thread_create (name, PRI_DEFAULT, __do_fork, cur); // 자식 pid 반환
 	if (pid == TID_ERROR)
 		return TID_ERROR;
 
 	struct thread *child = get_child_process(pid);
-	if (child == NULL) {
-		return TID_ERROR;
-	}
 
 	sema_down(&child->load_sema);
 
@@ -210,7 +206,6 @@ __do_fork (void *aux) {
 
 	// 그렇게 로드가 끝나면 sema_up으로 대기중인 부모 프로세스의 lock을 풀어준다.
 	sema_up(&current->load_sema);
-
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
@@ -249,7 +244,6 @@ process_exec (void *f_name) {
 		 token_arr[count++] = token;
 	/* And then load the binary 
  	 * 2. 디스크에서 해당 바이너리 파일을 메모리로 로드한다 -> load() */
-
 	success = load (file_name, &_if);
 	/* If load failed, quit. */
 	if (!success)
@@ -282,13 +276,13 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	// 애초에 전제가 잘못됐음 부모의 sema를 down하는것이 아니라 자식의 sema를 down하는 거였음
 	struct thread *child_thread = get_child_process(child_tid);
 	if (child_thread == NULL) {
 		return -1;
 	}
 	sema_down(&child_thread->wait_sema);
 	list_remove(&child_thread->child_elem);
+	sema_up(&child_thread->exit_sema);
 	return child_thread->exit_status;
 }
 
@@ -300,9 +294,12 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-	sema_up(&cur->wait_sema);
+
 
 	process_cleanup ();
+
+	sema_up(&cur->wait_sema);
+	sema_down(&cur->exit_sema);
 }
 
 /* Free the current process's resources. */

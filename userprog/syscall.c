@@ -12,6 +12,7 @@
 #include "filesys/filesys.h"
 #include <devices/input.h>
 #include "lib/kernel/stdio.h"
+#include "threads/palloc.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -77,9 +78,9 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		thread_current()->parent_if = f;
 		f->R.rax = fork(f->R.rdi);
 		break;
-	// case SYS_EXEC:
-	// 	f->R.rax = exec(f->R.rdi);
-	// 	break;
+	case SYS_EXEC:
+		f->R.rax = exec(f->R.rdi);
+		break;
 	case SYS_WAIT:
 		f->R.rax = wait(f->R.rdi);
 		break;
@@ -140,25 +141,20 @@ exit (int status) {
 	thread_exit();
 }
 
-int
-exec(const char *cmd_line) {
-	tid_t tid = process_create_initd(cmd_line);
-	return process_wait(tid);
+int exec(const char *cmd_line)
+{
+	check_addr(cmd_line);
+
+	char *fn_copy;
+
+	fn_copy = palloc_get_page (PAL_ZERO);
+	if (fn_copy == NULL)
+		exit(-1);
+	strlcpy (fn_copy, cmd_line, PGSIZE);
+
+	if (process_exec(fn_copy) == -1)
+		exit(-1);
 }
-
-// int exec(const char *cmd_line)
-// {
-// 	check_address(cmd_line);
-
-// 	char *cmd_line_copy;
-// 	cmd_line_copy = palloc_get_page(0);
-// 	if (cmd_line_copy == NULL)
-// 		exit(-1);							  
-// 	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
-
-// 	if (process_exec(cmd_line_copy) == -1)
-// 		exit(-1);
-// }
 
 bool 
 create (const char *file, unsigned initial_size) {
