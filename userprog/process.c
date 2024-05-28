@@ -256,6 +256,9 @@ process_exec (void *f_name) {
 
 	palloc_free_page (file_name);
 	/* Start switched process. */
+	struct thread *parent = thread_entry(thread_current()->parant_pid);
+
+	sema_down(&parent->load_sema);
 	do_iret (&_if);
 	NOT_REACHED ();
 }
@@ -295,8 +298,9 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-
 	process_cleanup ();
+
+	process_exit_file();
 
 	sema_up(&cur->wait_sema);
 	sema_down(&cur->exit_sema);
@@ -786,7 +790,6 @@ process_exit_file(void) {
 			process_close_file(i);
 		}
     }
-	sema_up(&cur->wait_sema);
 }
 
 int 

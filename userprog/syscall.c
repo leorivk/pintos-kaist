@@ -177,6 +177,10 @@ open (const char *file) {
 	if (open_file == NULL) 
 		return -1;
 
+	if(strcmp(thread_name(), file) == 0) {
+		file_deny_write(open_file);
+	}
+
 	int fd = process_add_file(open_file);
 
 	if (fd == -1)
