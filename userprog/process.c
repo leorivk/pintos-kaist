@@ -301,6 +301,7 @@ process_exit (void) {
 	process_cleanup ();
 
 	process_exit_file();
+	palloc_free_multiple(cur->fdt, FDT_PAGES);
 
 	sema_up(&cur->wait_sema);
 	sema_down(&cur->exit_sema);
