@@ -256,9 +256,6 @@ process_exec (void *f_name) {
 
 	palloc_free_page (file_name);
 	/* Start switched process. */
-	struct thread *parent = thread_entry(thread_current()->parant_pid);
-
-	sema_down(&parent->load_sema);
 	do_iret (&_if);
 	NOT_REACHED ();
 }
@@ -534,7 +531,6 @@ load (const char *file_name, struct intr_frame *if_) {
 done:
 	/* We arrive here whether the load is successful or not. */
 	file_close (file);
-	struct thread *parent = thread_entry(t->parant_pid);
 
 	return success;
 }
