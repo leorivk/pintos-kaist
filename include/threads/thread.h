@@ -131,9 +131,6 @@ struct thread
 	struct list children_list;
 	struct list_elem child_elem;
 
-	// 자식은 부모의 pid를 저장한다.
-	int parant_pid;
-
 	struct semaphore exit_sema;
 	struct semaphore load_sema;
 	struct semaphore wait_sema;
