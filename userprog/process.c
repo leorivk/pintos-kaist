@@ -105,6 +105,8 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	sema_down(&child->load_sema);
 
 	if (child->exit_status == TID_ERROR) {
+		list_remove(&child->child_elem);
+		sema_up(&child->exit_sema);
 		return TID_ERROR;
 	}
 
@@ -256,9 +258,6 @@ process_exec (void *f_name) {
 
 	palloc_free_page (file_name);
 	/* Start switched process. */
-	struct thread *parent = thread_entry(thread_current()->parant_pid);
-
-	sema_down(&parent->load_sema);
 	do_iret (&_if);
 	NOT_REACHED ();
 }
