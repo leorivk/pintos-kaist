@@ -88,6 +88,7 @@ static tid_t allocate_tid (void);
 // Global descriptor table for the thread_start.
 // Because the gdt will be setup after the thread_init, we should
 // setup temporal gdt first.
+// 가상 주소의 접근 권한이나 다른 물리 메모리 영역에 접근하는지 확인하기 위해 주어지는 옵션
 static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
 /* Initializes the threading system by transforming the code
@@ -208,7 +209,7 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
-	tid = t->tid = allocate_tid ();
+	tid = t->tid = allocate_tid (); // 페이지 할당
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -220,6 +221,21 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+
+	t->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if (t->fdt == NULL)
+		return TID_ERROR;
+	t->fdt[0] = 0;
+	t->fdt[1] = 1;
+	t->next_fd = FDT_PAGES;
+
+	// 세마포어 초기화
+	sema_init(&t->exit_sema, 0);
+	sema_init(&t->load_sema, 0);
+	sema_init(&t->wait_sema, 0);
+
+	// children
+	list_push_back(&thread_current()->children_list, &t->child_elem);
 
 	list_push_back(&all_list, &t->all_elem);
 	/* Add to run queue. */
@@ -358,7 +374,8 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
-	list_remove(&thread_current()->all_elem);
+	struct thread *cur = thread_current();
+	list_remove(&cur->all_elem);
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -501,6 +518,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->magic = THREAD_MAGIC;
 	t->wait_on_lock = NULL;
 	list_init(&(t->donations)); // Initializes data structure for priority dontation
+
+	list_init(&(t->children_list));
 
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;

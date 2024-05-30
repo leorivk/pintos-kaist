@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include "filesys/file.h"
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -7,9 +8,29 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "userprog/process.h"
+#include "filesys/filesys.h"
+#include <devices/input.h>
+#include "lib/kernel/stdio.h"
+#include "threads/palloc.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+bool create (const char *file, unsigned initial_size);
+void halt (void);
+void exit (int status);
+bool remove (const char *file);
+int open (const char *file);
+int filesize (int fd);
+int read (int fd, void *buffer, unsigned size);
+int write (int fd, const void *buffer, unsigned size);
+void seek (int fd, unsigned position);
+unsigned tell (int fd);
+void close (int fd);
+int wait (int pid);
+void check_addr(char *addr);
+
+struct lock filesys_lock;
 
 /* System call.
  *
@@ -35,12 +56,223 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+	lock_init(&filesys_lock);
 }
 
 /* The main system call interface */
-void
-syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+void syscall_handler(struct intr_frame *f UNUSED)
+{
+	int syscall_n = f->R.rax; /* 시스템 콜 넘버 */
+#ifdef VM
+	thread_current()->rsp = f->rsp;
+#endif
+	switch (syscall_n)
+	{
+	case SYS_HALT:
+		halt();
+		break;
+	case SYS_EXIT:
+		exit(f->R.rdi);
+		break;
+	case SYS_FORK:
+		thread_current()->parent_if = f;
+		f->R.rax = fork(f->R.rdi);
+		break;
+	case SYS_EXEC:
+		f->R.rax = exec(f->R.rdi);
+		break;
+	case SYS_WAIT:
+		f->R.rax = wait(f->R.rdi);
+		break;
+	case SYS_CREATE:
+		f->R.rax = create(f->R.rdi, f->R.rsi);
+		break;
+	case SYS_REMOVE:
+		f->R.rax = remove(f->R.rdi);
+		break;
+	case SYS_OPEN:
+		f->R.rax = open(f->R.rdi);
+		break;
+	case SYS_FILESIZE:
+		f->R.rax = filesize(f->R.rdi);
+		break;
+	case SYS_READ:
+		f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+		break;
+	case SYS_WRITE:
+		f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+		break;
+	case SYS_SEEK:
+		seek(f->R.rdi, f->R.rsi);
+		break;
+	case SYS_TELL:
+		f->R.rax = tell(f->R.rdi);
+		break;
+	case SYS_CLOSE:
+		close(f->R.rdi);
+		break;
+	// case SYS_MMAP:
+	// 	f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+	// 	break;
+	// case SYS_MUNMAP:
+	// 	munmap(f->R.rdi);
+	// 	break;
+	}
+}
+
+tid_t fork(const char *thread_name) {
+	return process_fork(thread_name, NULL);
+}
+
+int wait (int pid) {
+	return process_wait(pid);
+}
+
+void 
+halt (void) {
+	power_off();
+}
+
+void 
+exit (int status) {
+	struct thread *cur = thread_current();
+	cur->exit_status = status;
+	printf("%s: exit(%d)\n", cur->name, status);
+	thread_exit();
+}
+
+int exec(const char *cmd_line)
+{
+	check_addr(cmd_line);
+
+	char *fn_copy;
+
+	fn_copy = palloc_get_page (PAL_ZERO);
+	if (fn_copy == NULL)
+		exit(-1);
+	strlcpy (fn_copy, cmd_line, PGSIZE);
+
+	if (process_exec(fn_copy) == -1)
+		exit(-1);
+}
+
+bool 
+create (const char *file, unsigned initial_size) {
+	check_addr(file);
+	return filesys_create(file, initial_size);
+}
+
+bool 
+remove (const char *file) {
+	check_addr(file);
+	return filesys_remove(file);
+}
+
+int 
+open (const char *file) {
+
+	check_addr(file);
+	struct file *open_file = filesys_open(file);
+
+	if (open_file == NULL) 
+		return -1;
+
+	if(strcmp(thread_name(), file) == 0) {
+		file_deny_write(open_file);
+	}
+
+	int fd = process_add_file(open_file);
+
+	if (fd == -1)
+		file_close(open_file);
+
+	return fd;
+}
+
+int 
+filesize (int fd) {
+	struct file *open_file = process_get_file(fd);
+	if (open_file) 
+		return file_length(open_file);
+	return -1;
+}
+
+int 
+read (int fd, void *buffer, unsigned size) {
+	int count;
+	check_addr(buffer);
+	unsigned char *buff = buffer;
+
+	lock_acquire(&filesys_lock);
+
+	if (fd == 0) {
+		char key;
+		for(int i = 0; i < size; i++) {
+			key = input_getc();
+			*buff++ = key;
+			if (key == '\0') {
+				count = i;
+				break;
+			}
+		}
+	} else {
+		struct file *open_file = process_get_file(fd);
+		count = file_read(open_file, buffer, size);
+	}
+	lock_release(&filesys_lock);
+	return count;
+}
+
+int 
+write (int fd, const void *buffer, unsigned size) {
+	int count = 0;
+	check_addr(buffer);
+	lock_acquire(&filesys_lock);
+	if (fd == 1) {
+		putbuf(buffer, size);
+		lock_release(&filesys_lock);
+		return size;
+	}
+	struct file *open_file = process_get_file(fd);
+	if (open_file == NULL) {
+		lock_release(&filesys_lock);
+		return -1;
+	}
+	count = file_write(open_file, buffer, size);
+
+	lock_release(&filesys_lock);
+	return count;
+}
+
+void 
+seek (int fd, unsigned position) {
+	struct file *open_file = process_get_file(fd);
+	if (fd < FDT_PAGES || fd > FDT_COUNT_LIMIT)
+		return;
+	if (open_file)
+		file_seek(open_file, position);
+}
+
+unsigned 
+tell (int fd) {
+	struct file *open_file = process_get_file(fd);
+	if (fd < FDT_PAGES || fd > FDT_COUNT_LIMIT)
+		return;
+	if (open_file)
+		return file_tell(open_file);
+	return NULL;
+}
+
+void 
+close (int fd) {
+	struct file *open_file = process_get_file(fd);
+	if (open_file == NULL)
+		return;
+	process_close_file(fd);
+}
+
+void 
+check_addr(char *addr) {
+	struct thread *cur = thread_current();
+	if (addr == NULL || !is_user_vaddr(addr) || pml4_get_page(cur->pml4, addr) == NULL) exit(-1);
 }

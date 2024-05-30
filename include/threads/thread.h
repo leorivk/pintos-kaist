@@ -1,5 +1,8 @@
 #ifndef THREADS_THREAD_H
 #define THREADS_THREAD_H
+#define USERPROG
+
+#define thread_entry(tid) ((struct thread*) &tid)
 
 #include <debug.h>
 #include <list.h>
@@ -115,9 +118,26 @@ struct thread
 	int nice;                   
     int recent_cpu;
 
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
+
+	// file fdt 선언
+	int **fdt;
+	int next_fd; 
+
+	// 부모는 자식을 해당 리스트에 추가된다.
+	struct list children_list;
+	struct list_elem child_elem;
+
+	struct semaphore exit_sema;
+	struct semaphore load_sema;
+	struct semaphore wait_sema;
+	int exit_status;
+
+	struct intr_frame *parent_if;
+
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
