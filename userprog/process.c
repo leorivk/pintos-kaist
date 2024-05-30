@@ -836,7 +836,3 @@ struct thread *get_child_process(int pid) {
 	}
 	return NULL;
 }
-
-// struct thread *remove_child_process(struct thread *cp) {
-// 	list_remove(&cp->child_elem);
-// }
