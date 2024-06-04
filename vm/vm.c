@@ -3,6 +3,7 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "lib/kernel/hash.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -53,6 +54,24 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: Create the page, fetch the initialier according to the VM type,
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
+		// struct page *page = 
+
+		// VM type 에 따라 페이지 생성
+		// switch (type)
+		// {
+		// 	case VM_UNINIT:
+		// 		uninit_new(upage, );
+		// 		break;
+		// 	case VM_ANON:
+		// 		uninit_new(upage, );
+		// 		break;
+		// 	case VM_FILE:
+		// 		uninit_new(upage, );
+		// 		break;
+		// 	default:
+		// 	break;
+		// }
+
 
 		/* TODO: Insert the page into the spt. */
 	}
@@ -174,6 +193,7 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+	hash_init(&spt->hash_table, hash_func, hash_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
