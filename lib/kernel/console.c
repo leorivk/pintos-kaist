@@ -1,3 +1,4 @@
+#include <console.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include "devices/serial.h"
@@ -5,7 +6,6 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
-#include "lib/kernel/console.h"
 
 static void vprintf_helper (char, void *);
 static void putchar_have_lock (uint8_t c);
@@ -156,7 +156,7 @@ putchar (int c) {
 
 	return c;
 }
-
+
 /* Helper function for vprintf(). */
 static void
 vprintf_helper (char c, void *char_cnt_) {
