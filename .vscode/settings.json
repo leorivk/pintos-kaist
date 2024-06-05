@@ -14,6 +14,7 @@
         "console.h": "c",
         "file.h": "c",
         "stdio.h": "c",
-        "vga.h": "c"
+        "vga.h": "c",
+        "hash.h": "c"
     }
 }

@@ -156,7 +156,6 @@ hash_delete(struct hash *h, struct hash_elem *e)
    any of the functions hash_clear(), hash_destroy(),
    hash_insert(), hash_replace(), or hash_delete(), yields
    undefined behavior, whether done from ACTION or elsewhere. */
-// 임의의 순서로 hash의 각 요소에 대해 action을 한 번씩 호출
 void hash_apply(struct hash *h, hash_action_func *action)
 {
 	size_t i;
