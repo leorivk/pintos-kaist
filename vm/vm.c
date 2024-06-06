@@ -182,8 +182,8 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 		return false;
 
 	/* 쓰기 권한 확인 */
-	if (write && page != NULL && !page->writable)
-		return false;
+	// if (write && page != NULL && !page->writable)
+	// 	return false;
 
 	/**
 	 * 예외로 인해 유저 모드에서 커널 모드로 전환될 때에만 스택 포인터 저장
