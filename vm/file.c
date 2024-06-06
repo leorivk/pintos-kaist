@@ -66,7 +66,7 @@ do_mmap (void *addr, size_t length, int writable,
 
 	void *mapped_addr = addr;
 
-	size_t read_bytes = file_length(f) < length ? file_length(f) : length;
+	size_t read_bytes = file_length(file) < length ? file_length(file) : length;
     size_t zero_bytes = PGSIZE - read_bytes % PGSIZE;
 
 	while (read_bytes > 0 || zero_bytes > 0) {
@@ -98,4 +98,26 @@ do_mmap (void *addr, size_t length, int writable,
 /* Do the munmap */
 void
 do_munmap (void *addr) {
+	/**
+	 * 종료를 통하거나 다른 방법을 통해 프로세스가 exit되면 모든 매핑이 암시적으로 매핑 해제됩니다. 
+	 * 암시적이든 명시적이든 매핑이 매핑 해제되면 프로세스에서 쓴 모든 페이지는 파일에 다시 기록되며 기록되지 않은 페이지는 기록되지 않아야 합니다. 
+	 * 그런 다음 해당 페이지는 프로세스의 가상 페이지 목록에서 제거됩니다.
+	*/
+	while (true) {
+        struct thread *cur = thread_current();
+        struct page* page = spt_find_page(&cur->spt, addr);
+        
+        if (page == NULL) 
+            break;
+        
+        struct file_meta_data *meta = (struct file_meta_data *) page->uninit.aux;
+		/* 수정되었으면 수정 내용을 파일에 기록한 후 더티 비트를 0으로 설정 */
+        if (pml4_is_dirty(cur->pml4, page->va)) {
+            file_write(meta->file, meta->ofs);
+            pml4_set_dirty (cur->pml4, page->va, 0);
+        }
+
+        pml4_clear_page(cur->pml4, page->va);
+        addr += PGSIZE;
+    }
 }
