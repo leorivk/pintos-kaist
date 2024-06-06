@@ -110,7 +110,11 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		break;
 	case SYS_CLOSE:
 		close(f->R.rdi);
-	}
+	case SYS_MMAP:
+        f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+        break;
+    }
+
 }
 
 void check_address(void *addr)
@@ -291,4 +295,35 @@ int exec(const char *cmd_line)
 int wait(int pid)
 {
 	return process_wait(pid);
+}
+
+void *mmap(void *addr, size_t length, int writable, int fd, off_t offset)
+{
+	struct file *file = process_get_file(fd);
+
+    if (addr == NULL || !is_user_vaddr(addr) || pg_round_down(addr) != addr) {
+		return NULL;
+	}
+
+    if ((long)length <= 0 || !is_user_vaddr((size_t)addr + length)) {
+		return NULL;
+	}
+
+    if (offset % PGSIZE != 0) {
+		return NULL;
+	}
+    
+    if (fd == 0 || fd == 1) {
+		exit(-1);
+	}
+    
+    if (spt_find_page(&thread_current()->spt, addr)) {
+		return NULL;
+	}
+
+    if (file == NULL) {
+		return NULL;
+	}
+
+    return do_mmap(addr, length, writable, file, offset);
 }
