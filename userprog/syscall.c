@@ -64,6 +64,8 @@ void syscall_init(void)
 void syscall_handler(struct intr_frame *f UNUSED)
 {
 	int syscall_n = f->R.rax; /* 시스템 콜 넘버 */
+	thread_current()->rsp = f->rsp;
+	
 	switch (syscall_n)
 	{
 	case SYS_HALT:
