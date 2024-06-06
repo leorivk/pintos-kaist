@@ -176,34 +176,35 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 						 bool user UNUSED, bool write UNUSED, bool not_present UNUSED)
 {
 	struct supplemental_page_table *spt UNUSED = &thread_current()->spt;
-	struct page *page = NULL;
+	struct page *page = spt_find_page(spt, addr);
 	/* TODO: Validate the fault */
-	if (addr == NULL)
+	if (addr == NULL || is_kernel_vaddr(addr))
 		return false;
 
-	if (is_kernel_vaddr(addr))
+	/* 쓰기 권한 확인 */
+	if (write && page != NULL && !page->writable)
 		return false;
 
+	/**
+	 * 예외로 인해 유저 모드에서 커널 모드로 전환될 때에만 스택 포인터 저장
+	 * 따라서, page_fault()로 전달된 interrupt frame에서 rsp를 읽으면
+	 * 유저 스택 포인터가 아닌 정의되지 않은 값 얻을 가능성 존재
+	*/
+	void *rsp = !user ? thread_current()->rsp : f->rsp;
 	if (not_present) 
 	{
-		/**
-		 * 예외로 인해 유저 모드에서 커널 모드로 전환될 때에만 스택 포인터 저장
-		 * 따라서, page_fault()로 전달된 interrupt frame에서 rsp를 읽으면
-		 * 유저 스택 포인터가 아닌 정의되지 않은 값 얻을 가능성 존재
-		*/
-		void *rsp = !user ? thread_current()->rsp : f->rsp;
-
 		/* 프레임 할당 실패 시 */
 		if (!vm_claim_page(addr)) {
 			/* 스택 증가로 Page Fault를 처리할 수 있는 경우 */
 			if (rsp - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK) {
-				vm_stack_growth(pg_round_down(addr));
-				if (vm_claim_page(addr))
+				void* round_addr = pg_round_down(addr);
+				vm_stack_growth(round_addr);
+				if (vm_claim_page(round_addr)) // 스택 확장 후 다시 프레임 할당
 					return true;
 			}
-			return false;
+			return false; 
 		}
-		return true;
+		return true; // 프레임 할당 성공
 	}
 	return false;
 }
