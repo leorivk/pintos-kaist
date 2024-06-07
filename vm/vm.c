@@ -201,7 +201,7 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 				void* round_addr = pg_round_down(addr);
 				vm_stack_growth(round_addr);
 				if (vm_claim_page(round_addr)) // 스택 확장 후 다시 프레임 할당
-					return truez;
+					return true;
 			}
 			return false; 
 		}
