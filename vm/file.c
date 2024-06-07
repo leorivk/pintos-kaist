@@ -83,6 +83,8 @@ do_mmap (void *addr, size_t length, int writable,
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
         struct file_meta_data *meta = (struct file_meta_data *)malloc(sizeof(struct file_meta_data));
+		if (meta == NULL)
+			return NULL;
 
         meta->file = file_copy;
         meta->ofs = offset;
@@ -106,27 +108,26 @@ do_mmap (void *addr, size_t length, int writable,
 }
 
 /* Do the munmap */
-void
-do_munmap (void *addr) {
+void 
+do_munmap(void *addr) {
 	/**
-	 * 종료를 통하거나 다른 방법을 통해 프로세스가 exit되면 모든 매핑이 암시적으로 매핑 해제됩니다. 
-	 * 암시적이든 명시적이든 매핑이 매핑 해제되면 프로세스에서 쓴 모든 페이지는 파일에 다시 기록되며 기록되지 않은 페이지는 기록되지 않아야 합니다. 
+	 * 종료를 통하거나 다른 방법을 통해 프로세스가 exit되면 모든 매핑이 암시적으로 매핑 해제됩니다.
+	 * 암시적이든 명시적이든 매핑이 매핑 해제되면 프로세스에서 쓴 모든 페이지는 파일에 다시 기록되며 기록되지 않은 페이지는 기록되지 않아야 합니다.
 	 * 그런 다음 해당 페이지는 프로세스의 가상 페이지 목록에서 제거됩니다.
-	*/
+	 */
 	while (true) {
-        struct page* page = spt_find_page(&thread_current()->spt, addr);
-        
-        if (page == NULL)
-            break;
+		struct page* page = spt_find_page(&thread_current()->spt, addr);
 
-        // struct file_meta_data * meta = (struct file_meta_data *) page->uninit.aux;
-        
-        // if(pml4_is_dirty(thread_current()->pml4, page->va)) {
-        //     file_write_at(meta->file, addr, meta->page_read_bytes, meta->ofs);
-        //     pml4_set_dirty (thread_current()->pml4, page->va, 0);
-        // }
+		if (page == NULL) {
+			break;
+		}
 
-        destroy(page);
-        addr += PGSIZE;
-    }
+		if (pml4_is_dirty(thread_current()->pml4, page->va)) {
+			struct file_page *file_page = &page->file;
+			file_write_at(file_page->file, page->va, file_page->page_read_bytes, file_page->ofs);
+			pml4_set_dirty(thread_current()->pml4, page->va, 0);
+		}
+		pml4_clear_page(thread_current()->pml4, page->va);
+		addr += PGSIZE;
+	}
 }

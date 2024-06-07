@@ -129,8 +129,6 @@ void check_address(void *addr)
 		exit(-1);
 	if (!is_user_vaddr(addr))
 		exit(-1);
-	// if (pml4_get_page(thread_current()->pml4, addr) == NULL)
-	// 	exit(-1);
 }
 
 void halt(void)
@@ -149,7 +147,10 @@ void exit(int status)
 bool create(const char *file, unsigned initial_size)
 {
 	check_address(file);
-	return filesys_create(file, initial_size);
+	lock_acquire(&filesys_lock);
+	bool success = filesys_create(file, initial_size);
+	lock_release(&filesys_lock);
+	return success;
 }
 
 bool remove(const char *file)
@@ -161,12 +162,17 @@ bool remove(const char *file)
 int open(const char *file_name)
 {
 	check_address(file_name);
+	lock_acquire(&filesys_lock);
 	struct file *file = filesys_open(file_name);
-	if (file == NULL)
+	if (file == NULL) {
+		lock_release(&filesys_lock);
 		return -1;
+	}
 	int fd = process_add_file(file);
 	if (fd == -1)
 		file_close(file);
+
+	lock_release(&filesys_lock);
 	return fd;
 }
 
@@ -223,7 +229,6 @@ int read(int fd, void *buffer, unsigned size)
 	{
 		if (fd < 2)
 		{
-
 			lock_release(&filesys_lock);
 			return -1;
 		}
@@ -238,7 +243,6 @@ int read(int fd, void *buffer, unsigned size)
 		struct file *file = process_get_file(fd);
 		if (file == NULL)
 		{
-
 			lock_release(&filesys_lock);
 			return -1;
 		}

@@ -242,7 +242,9 @@ int process_exec(void *f_name)
 		parse[count++] = token;
 
 	/* And then load the binary */
+	lock_acquire(&filesys_lock);
 	success = load(file_name, &_if);
+	lock_release(&filesys_lock);
 	// 이진 파일을 디스크에서 메모리로 로드한다.
 	// 이진 파일에서 실행하려는 명령의 위치를 얻고 (if_.rip)
 	// user stack의 top 포인터를 얻는다. (if_.rsp)
@@ -836,7 +838,7 @@ setup_stack(struct intr_frame *if_)
 	/* TODO: Your code goes here */
 
 	// VM_MARKER_0을 스택으로 마킹
-    if (vm_alloc_page_with_initializer(VM_ANON | VM_MARKER_0, stack_bottom, 1, NULL, NULL)) {
+    if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, 1)) {
         if (vm_claim_page(stack_bottom)) {
             if_->rsp = USER_STACK;
             return true;
