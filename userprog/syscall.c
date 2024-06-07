@@ -113,6 +113,7 @@ void syscall_handler(struct intr_frame *f UNUSED)
 		break;
 	case SYS_CLOSE:
 		close(f->R.rdi);
+		break;
 	case SYS_MMAP:
 		f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
         break;
@@ -139,7 +140,7 @@ void halt(void)
 void exit(int status)
 {
 	struct thread *curr = thread_current();
-	curr->exit_status = status; // 이거 wait에서 사용?
+	curr->exit_status = status;
 	printf("%s: exit(%d)\n", curr->name, status);
 	thread_exit();
 }
@@ -205,6 +206,7 @@ void close(int fd)
 	struct file *file = process_get_file(fd);
 	if (file == NULL)
 		return;
+
 	file_close(file);
 	process_close_file(fd);
 }
@@ -215,7 +217,6 @@ int read(int fd, void *buffer, unsigned size)
 	char *ptr = (char *)buffer;
 	int bytes_read = 0;
 
-	lock_acquire(&filesys_lock);
 	if (fd == STDIN_FILENO)
 	{
 		for (int i = 0; i < size; i++)
@@ -223,29 +224,26 @@ int read(int fd, void *buffer, unsigned size)
 			*ptr++ = input_getc();
 			bytes_read++;
 		}
-		lock_release(&filesys_lock);
 	}
 	else
 	{
 		if (fd < 2)
 		{
-			lock_release(&filesys_lock);
 			return -1;
 		}
 
 		struct page *page = spt_find_page(&thread_current()->spt, buffer);
 		if (page && !page->writable)
 		{
-			lock_release(&filesys_lock);
 			exit(-1);
 		}
 
 		struct file *file = process_get_file(fd);
 		if (file == NULL)
 		{
-			lock_release(&filesys_lock);
 			return -1;
 		}
+		lock_acquire(&filesys_lock);
 		bytes_read = file_read(file, buffer, size);
 		lock_release(&filesys_lock);
 	}
@@ -268,6 +266,7 @@ int write(int fd, const void *buffer, unsigned size)
 		struct file *file = process_get_file(fd);
 		if (file == NULL)
 			return -1;
+			
 		lock_acquire(&filesys_lock);
 		bytes_write = file_write(file, buffer, size);
 		lock_release(&filesys_lock);
@@ -284,22 +283,16 @@ int exec(const char *cmd_line)
 {
 	check_address(cmd_line);
 
-	// process.c 파일의 process_create_initd 함수와 유사하다.
-	// 단, 스레드를 새로 생성하는 건 fork에서 수행하므로
-	// 이 함수에서는 새 스레드를 생성하지 않고 process_exec을 호출한다.
-
-	// process_exec 함수 안에서 filename을 변경해야 하므로
-	// 커널 메모리 공간에 cmd_line의 복사본을 만든다.
-	// (현재는 const char* 형식이기 때문에 수정할 수 없다.)
 	char *cmd_line_copy;
 	cmd_line_copy = palloc_get_page(0);
 	if (cmd_line_copy == NULL)
-		exit(-1);							  // 메모리 할당 실패 시 status -1로 종료한다.
-	strlcpy(cmd_line_copy, cmd_line, PGSIZE); // cmd_line을 복사한다.
+		exit(-1);							  
+	strlcpy(cmd_line_copy, cmd_line, PGSIZE); 
 
-	// 스레드의 이름을 변경하지 않고 바로 실행한다.
 	if (process_exec(cmd_line_copy) == -1)
-		exit(-1); // 실패 시 status -1로 종료한다.
+		exit(-1); 
+	
+	return 0;
 }
 
 int wait(int pid)

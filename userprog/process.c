@@ -245,10 +245,6 @@ int process_exec(void *f_name)
 	lock_acquire(&filesys_lock);
 	success = load(file_name, &_if);
 	lock_release(&filesys_lock);
-	// 이진 파일을 디스크에서 메모리로 로드한다.
-	// 이진 파일에서 실행하려는 명령의 위치를 얻고 (if_.rip)
-	// user stack의 top 포인터를 얻는다. (if_.rsp)
-	// 위 과정을 성공하면 실행을 계속하고, 실패하면 스레드가 종료된다.
 
 	/* If load failed, quit. */
 	if (!success)
