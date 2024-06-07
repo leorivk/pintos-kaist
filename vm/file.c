@@ -23,12 +23,22 @@ vm_file_init (void) {
 }
 
 /* Initialize the file backed page */
+/**
+ * 파일 지원 페이지를 초기화합니다. 
+ * 이 함수는 먼저 page->operations에서 파일 지원 페이지에 대한 핸들러를 설정합니다. 
+ * 메모리를 지원하는 파일과 같은 페이지 구조에 대한 일부 정보를 업데이트할 수 있습니다.
+ */
 bool
 file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &file_ops;
+    struct file_page *file_page = &page->file;
 
-	struct file_page *file_page = &page->file;
+    struct file_meta_data *meta = (struct file_meta_data *)page->uninit.aux;
+    file_page->file = meta->file;
+    file_page->ofs = meta->ofs;
+    file_page->page_read_bytes = meta->page_read_bytes;
+    file_page->page_zero_bytes = meta->page_zero_bytes;
 }
 
 /* Swap in the page by read contents from the file. */
@@ -47,6 +57,13 @@ file_backed_swap_out (struct page *page) {
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
+
+    if (pml4_is_dirty(thread_current()->pml4, page->va))
+    {
+        file_write_at(file_page->file, page->va, file_page->page_read_bytes, file_page->ofs);
+        pml4_set_dirty(thread_current()->pml4, page->va, 0);
+    }
+    pml4_clear_page(thread_current()->pml4, page->va);
 }
 
 /* Do the mmap */
@@ -82,8 +99,10 @@ do_mmap (void *addr, size_t length, int writable,
 		meta->page_zero_bytes = page_zero_bytes;
         meta->ofs = offset;
 
-		if (!vm_alloc_page_with_initializer (VM_ANON, addr, writable, lazy_load_segment, meta)) 
+		if (!vm_alloc_page_with_initializer (VM_ANON, addr, writable, lazy_load_segment, meta))  {
+			free(meta);
 			return NULL;
+		}
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
@@ -113,7 +132,7 @@ do_munmap (void *addr) {
         struct file_meta_data *meta = (struct file_meta_data *) page->uninit.aux;
 		/* 수정되었으면 수정 내용을 파일에 기록한 후 더티 비트를 0으로 설정 */
         if (pml4_is_dirty(cur->pml4, page->va)) {
-            file_write(meta->file, meta->ofs);
+            file_write_at(meta->file, addr, meta->page_read_bytes, meta->ofs);
             pml4_set_dirty (cur->pml4, page->va, 0);
         }
 

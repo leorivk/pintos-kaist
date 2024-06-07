@@ -752,7 +752,7 @@ lazy_load_segment(struct page *page, void *aux)
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
 
-		struct file_meta_data* meta = (struct file_meta_data*) aux;
+	struct file_meta_data* meta = (struct file_meta_data*) aux;
 
 	struct file* file = meta->file;
 	size_t page_read_bytes = meta->page_read_bytes;

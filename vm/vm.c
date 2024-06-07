@@ -5,6 +5,7 @@
 #include "threads/mmu.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "userprog/process.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -176,7 +177,7 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 						 bool user UNUSED, bool write UNUSED, bool not_present UNUSED)
 {
 	struct supplemental_page_table *spt UNUSED = &thread_current()->spt;
-	struct page *page = spt_find_page(spt, addr);
+
 	/* TODO: Validate the fault */
 	if (addr == NULL || is_kernel_vaddr(addr))
 		return false;
@@ -200,7 +201,7 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 				void* round_addr = pg_round_down(addr);
 				vm_stack_growth(round_addr);
 				if (vm_claim_page(round_addr)) // 스택 확장 후 다시 프레임 할당
-					return true;
+					return truez;
 			}
 			return false; 
 		}
@@ -228,8 +229,7 @@ bool vm_claim_page(void *va UNUSED)
 }
 
 /* Claim the PAGE and set up the mmu. */
-static bool
-vm_do_claim_page(struct page *page)
+static bool vm_do_claim_page(struct page *page)
 {
 	struct frame *frame = vm_get_frame();
 
@@ -241,7 +241,7 @@ vm_do_claim_page(struct page *page)
 	struct thread *current = thread_current();
 	pml4_set_page(current->pml4, page->va, frame->kva, page->writable);
 
-	return swap_in(page, frame->kva); // uninit_initialize
+	return swap_in(page, frame->kva);
 }
 
 /* Returns a hash value for page p. */
@@ -296,10 +296,25 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 			continue;
 		}
 
-		// if (type == VM_FILE)
-		// {
+		if (type == VM_FILE)
+		{
+            struct file_meta_data *meta = malloc(sizeof(struct file_meta_data));
 
-		// }
+            meta->file = src_page->file.file;
+            meta->ofs = src_page->file.ofs;
+            meta->page_read_bytes = src_page->file.page_read_bytes;
+            meta->page_zero_bytes = src_page->file.page_zero_bytes;
+
+            if (!vm_alloc_page_with_initializer(type, upage, writable, NULL, meta))
+                return false;
+
+            struct page *page = spt_find_page(dst, upage);
+            file_backed_initializer(page, type, NULL);
+            page->frame = src_page->frame;
+            pml4_set_page(thread_current()->pml4, page->va, src_page->frame->kva, src_page->writable);
+			
+            continue;
+		}
 
 		if (!vm_alloc_page(type, upage, writable)) 
 			return false;
