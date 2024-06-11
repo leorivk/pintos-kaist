@@ -5,6 +5,7 @@
 #include "threads/mmu.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "userprog/process.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -107,6 +108,7 @@ bool spt_insert_page(struct supplemental_page_table *spt UNUSED,
 
 void spt_remove_page(struct supplemental_page_table *spt, struct page *page)
 {
+	hash_delete(&spt->spt_hash, &page->hash_elem);
 	vm_dealloc_page(page);
 	return true;
 }
@@ -162,6 +164,7 @@ vm_get_frame(void)
 static void
 vm_stack_growth(void *addr UNUSED)
 {
+	vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1);
 }
 
 /* Handle the fault on write_protected page */
@@ -175,22 +178,35 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr UNUSED,
 						 bool user UNUSED, bool write UNUSED, bool not_present UNUSED)
 {
 	struct supplemental_page_table *spt UNUSED = &thread_current()->spt;
-	struct page *page = NULL;
+
 	/* TODO: Validate the fault */
-	if (addr == NULL)
+	if (addr == NULL || is_kernel_vaddr(addr))
 		return false;
 
-	if (is_kernel_vaddr(addr))
-		return false;
+	/* 쓰기 권한 확인 */
+	// if (write && page != NULL && !page->writable)
+	// 	return false;
 
+	/**
+	 * 예외로 인해 유저 모드에서 커널 모드로 전환될 때에만 스택 포인터 저장
+	 * 따라서, page_fault()로 전달된 interrupt frame에서 rsp를 읽으면
+	 * 유저 스택 포인터가 아닌 정의되지 않은 값 얻을 가능성 존재
+	*/
+	void *rsp = !user ? thread_current()->rsp : f->rsp;
 	if (not_present) 
 	{
-		page = spt_find_page(spt, addr);
-		if (page == NULL)
-			return false;
-		if (write == 1 && page->writable == 0)
-			return false;
-		return vm_do_claim_page(page);
+		/* 프레임 할당 실패 시 */
+		if (!vm_claim_page(addr)) {
+			/* 스택 증가로 Page Fault를 처리할 수 있는 경우 */
+			if (rsp - 8 <= addr && USER_STACK - 0x100000 <= addr && addr <= USER_STACK) {
+				void* round_addr = pg_round_down(addr);
+				vm_stack_growth(round_addr);
+				if (vm_claim_page(round_addr)) // 스택 확장 후 다시 프레임 할당
+					return true;
+			}
+			return false; 
+		}
+		return true; // 프레임 할당 성공
 	}
 	return false;
 }
@@ -214,8 +230,7 @@ bool vm_claim_page(void *va UNUSED)
 }
 
 /* Claim the PAGE and set up the mmu. */
-static bool
-vm_do_claim_page(struct page *page)
+static bool vm_do_claim_page(struct page *page)
 {
 	struct frame *frame = vm_get_frame();
 
@@ -227,7 +242,7 @@ vm_do_claim_page(struct page *page)
 	struct thread *current = thread_current();
 	pml4_set_page(current->pml4, page->va, frame->kva, page->writable);
 
-	return swap_in(page, frame->kva); // uninit_initialize
+	return swap_in(page, frame->kva);
 }
 
 /* Returns a hash value for page p. */
@@ -254,10 +269,69 @@ void supplemental_page_table_init(struct supplemental_page_table *spt UNUSED)
 	hash_init(&spt->spt_hash, page_hash, page_less, NULL);
 }
 
-/* Copy supplemental page table from src to dst */
+/* Copy supplemental page table from src to dst 
+ *
+ * __do_fork에서 호출
+ */
 bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
 								  struct supplemental_page_table *src UNUSED)
 {
+	struct hash_iterator iter;
+
+	hash_first(&iter, &src->spt_hash);
+
+	while (hash_next(&iter))
+	{
+		struct page *src_page = hash_entry(hash_cur(&iter), struct page, hash_elem);
+		enum vm_type type = src_page->operations->type;
+		void *upage = src_page->va;
+		bool writable = src_page->writable;
+
+		if (type == VM_UNINIT)
+		{
+			vm_initializer *init = src_page->uninit.init;
+			void *aux = src_page->uninit.aux;
+			if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, init, aux))
+				return false;
+				
+			continue;
+		}
+
+		if (type == VM_FILE)
+		{
+            struct file_meta_data *meta = malloc(sizeof(struct file_meta_data));
+
+            meta->file = src_page->file.file;
+            meta->ofs = src_page->file.ofs;
+            meta->page_read_bytes = src_page->file.page_read_bytes;
+            meta->page_zero_bytes = src_page->file.page_zero_bytes;
+
+            if (!vm_alloc_page_with_initializer(type, upage, writable, NULL, meta))
+                return false;
+
+            struct page *page = spt_find_page(dst, upage);
+            file_backed_initializer(page, type, NULL);
+            page->frame = src_page->frame;
+            pml4_set_page(thread_current()->pml4, page->va, src_page->frame->kva, src_page->writable);
+			
+            continue;
+		}
+
+		if (!vm_alloc_page(type, upage, writable)) 
+			return false;
+
+		if (!vm_claim_page(upage))
+			return false;
+
+		struct page *dst_page = spt_find_page(dst, upage);
+		if (dst_page == NULL)
+			return false;
+
+		memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+	}
+
+	return true;
+
 }
 
 /* Free the resource hold by the supplemental page table */
@@ -265,4 +339,12 @@ void supplemental_page_table_kill(struct supplemental_page_table *spt UNUSED)
 {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	hash_clear(&spt->spt_hash, spt_hash_destroy); // hash_destroy : 해시 테이블까지 삭제
+}
+
+void spt_hash_destroy(struct hash_elem *e, void *aux)
+{
+	struct page *page = hash_entry(e, struct page, hash_elem);
+	destroy(page);
+	free(page);
 }

@@ -23,4 +23,6 @@ struct file *process_get_file(int fd);
 void process_close_file(int fd);
 struct thread *get_child_process(int pid);
 
+bool lazy_load_segment(struct page *page, void *aux);
+
 #endif /* userprog/process.h */

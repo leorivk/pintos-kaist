@@ -18,6 +18,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "userprog/syscall.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -100,12 +101,6 @@ tid_t process_fork(const char *name, struct intr_frame *if_ UNUSED)
 	// 자식이 로드되다가 오류로 exit한 경우
 	if (child->exit_status == TID_ERROR)
 	{
-		// 자식이 종료되었으므로 자식 리스트에서 제거한다.
-		// 이거 넣으면 간헐적으로 실패함 (syn-read)
-		// list_remove(&child->child_elem);
-		// 자식이 완전히 종료되고 스케줄링이 이어질 수 있도록 자식에게 signal을 보낸다.
-		sema_up(&child->exit_sema);
-		// 자식 프로세스의 pid가 아닌 TID_ERROR를 반환한다.
 		return TID_ERROR;
 	}
 
@@ -208,8 +203,9 @@ __do_fork(void *aux)
 	}
 	current->next_fd = parent->next_fd;
 
-	// 로드가 완료될 때까지 기다리고 있던 부모 대기 해제
+	lock_acquire(&filesys_lock);
 	sema_up(&current->load_sema);
+	lock_release(&filesys_lock);
 	process_init();
 
 	/* Finally, switch to the newly created process. */
@@ -246,11 +242,9 @@ int process_exec(void *f_name)
 		parse[count++] = token;
 
 	/* And then load the binary */
+	lock_acquire(&filesys_lock);
 	success = load(file_name, &_if);
-	// 이진 파일을 디스크에서 메모리로 로드한다.
-	// 이진 파일에서 실행하려는 명령의 위치를 얻고 (if_.rip)
-	// user stack의 top 포인터를 얻는다. (if_.rsp)
-	// 위 과정을 성공하면 실행을 계속하고, 실패하면 스레드가 종료된다.
+	lock_release(&filesys_lock);
 
 	/* If load failed, quit. */
 	if (!success)
@@ -749,14 +743,14 @@ install_page(void *upage, void *kpage, bool writable)
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
-static bool
+bool
 lazy_load_segment(struct page *page, void *aux)
 {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
 
-		struct file_meta_data* meta = (struct file_meta_data*) aux;
+	struct file_meta_data* meta = (struct file_meta_data*) aux;
 
 	struct file* file = meta->file;
 	size_t page_read_bytes = meta->page_read_bytes;
@@ -840,7 +834,7 @@ setup_stack(struct intr_frame *if_)
 	/* TODO: Your code goes here */
 
 	// VM_MARKER_0을 스택으로 마킹
-    if (vm_alloc_page_with_initializer(VM_ANON | VM_MARKER_0, stack_bottom, 1, NULL, NULL)) {
+    if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, 1)) {
         if (vm_claim_page(stack_bottom)) {
             if_->rsp = USER_STACK;
             return true;
