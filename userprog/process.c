@@ -178,13 +178,19 @@ __do_fork(void *aux)
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
+	{
+		// printf("1111111111111111111\n\n\n");
 		goto error;
+	}
 
 	process_activate(current);
 #ifdef VM
 	supplemental_page_table_init(&current->spt);
 	if (!supplemental_page_table_copy(&current->spt, &parent->spt))
+	{
+		printf("22222222222222222222222222\n\n\n");
 		goto error;
+	}
 #else
 	if (!pml4_for_each(parent->pml4, duplicate_pte, parent))
 		goto error;
@@ -217,6 +223,7 @@ __do_fork(void *aux)
 		do_iret(&if_);
 error:
 	sema_up(&current->load_sema);
+// printf("에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 에러 발생 \n");
 	exit(TID_ERROR);
 }
 
