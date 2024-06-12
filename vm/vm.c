@@ -7,6 +7,9 @@
 #include "vm/inspect.h"
 #include "userprog/process.h"
 
+struct list frame_table;
+struct list_elem *start;
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void vm_init(void)
@@ -19,6 +22,8 @@ void vm_init(void)
 	register_inspect_intr();
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
+	list_init(&frame_table);
+
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -118,8 +123,30 @@ static struct frame *
 vm_get_victim(void)
 {
 	struct frame *victim = NULL;
-	/* TODO: The policy for eviction is up to you. */
+	/* FIFO eviction policy */
+	// victim = list_entry(list_pop_front (&frame_table), struct frame, frame_elem);
+	// // swap-file, swap-anon 실패
+	struct thread *curr = thread_current();
+	struct list_elem *e = start;
 
+	/*  */
+	for (start = e; start != list_end(&frame_table); start = list_next(start))
+	{
+		victim = list_entry(start, struct frame, frame_elem);
+		if (pml4_is_accessed(curr->pml4, victim->page->va))
+			pml4_set_accessed(curr->pml4, victim->page->va, 0);
+		else
+			return victim;
+	}
+
+	for (start = list_begin(&frame_table); start != e; start = list_next(start))
+	{
+		victim = list_entry(start, struct frame, frame_elem);
+		if (pml4_is_accessed(curr->pml4, victim->page->va))
+			pml4_set_accessed(curr->pml4, victim->page->va, 0);
+		else
+			return victim;
+	}
 	return victim;
 }
 
@@ -130,8 +157,9 @@ vm_evict_frame(void)
 {
 	struct frame *victim UNUSED = vm_get_victim();
 	/* TODO: swap out the victim and return the evicted frame. */
-
-	return NULL;
+	swap_out(victim->page);
+	
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -141,23 +169,29 @@ vm_evict_frame(void)
 static struct frame *
 vm_get_frame(void)
 {
-    struct frame *frame = malloc(sizeof(struct frame)); // 가상 메모리에 할당 -> 페이지
-    if (frame == NULL) {
-        PANIC("Failed to allocate memory for frame.");
-    }
+	// struct frame *frame = NULL;
+	/* TODO: Fill this function. */
+	struct frame *frame = (struct frame *)malloc(sizeof(struct frame));
 
-    frame->kva = palloc_get_page(PAL_USER); // 물리 메모리에 할당 -> 프레임
-    if (frame->kva == NULL) {
-        // Handle page eviction if no page is available.
-        PANIC("Need to implement page eviction.");
-    }
+	frame->kva = palloc_get_page(PAL_USER); /* USER POOL에서 커널 가상 주소 공간으로 1page 할당 */
 
+	/* if 프레임이 꽉 차서 할당받을 수 없다면 페이지 교체 실시
+	   else 성공했다면 frame 구조체 커널 주소 멤버에 위에서 할당받은 메모리 커널 주소 넣기 */
+	if (frame->kva == NULL)
+	{
+		frame = vm_evict_frame();  // 수정!
+		frame->page = NULL; 
+
+		return frame;
+	}
+	/* 새 프레임을 프레임 테이블에 넣어 관리한다. */
+	list_push_back (&frame_table, &frame->frame_elem);  
+  
 	frame->page = NULL;
 
-    ASSERT(frame != NULL);
-    ASSERT(frame->page == NULL);
-
-    return frame;
+	ASSERT(frame != NULL);
+	ASSERT(frame->page == NULL);
+	return frame;
 }
 
 /* Growing the stack. */

@@ -39,10 +39,21 @@ void vm_anon_init(void)
 /* Initialize the file mapping */
 bool anon_initializer(struct page *page, enum vm_type type, void *kva)
 {
+	/* page struct 안의 Union 영역은 현재 uninit page이다.
+	   ANON page를 초기화해주기 위해 해당 데이터를 모두 0으로 초기화해준다. 
+	   Q. 이렇게 하면 Union 영역은 모두 다 0으로 초기화되나? -> 그렇다 */
+	struct uninit_page *uninit = &page->uninit;
+	memset(uninit, 0, sizeof(struct uninit_page));
+
 	/* Set up the handler */
+	/* 이제 해당 페이지는 ANON이므로 operations도 anon으로 지정한다. */
 	page->operations = &anon_ops;
 
+	/* 해당 페이지는 아직 물리 메모리 위에 있으므로 swap_index의 값을 -1로 설정해준다. */
 	struct anon_page *anon_page = &page->anon;
+	anon_page->swap_sector = -1;
+
+	return true;
 }
 
 /* Swap in the page by read contents from the swap disk. */
@@ -51,7 +62,7 @@ anon_swap_in(struct page *page, void *kva)
 {
 	struct anon_page *anon_page = &page->anon;
 
-	int page_no = anon_page->swap_slot_no;
+	int page_no = anon_page->swap_sector;
 
 	/* 해당 슬롯이 사용 중인지 확인, 사용 중이 아니라면 false 반환 */
 	if (bitmap_test(swap_table, page_no) == false) 
@@ -89,7 +100,9 @@ anon_swap_out(struct page *page)
 
 	/* 스왑 슬롯을 사용 중인 상태로 업데이트 (true) */
 	bitmap_set(swap_table, page_no, true);
-	anon_page->swap_slot_no = page_no;
+	pml4_clear_page(thread_current()->pml4, page->va);
+	
+	anon_page->swap_sector = page_no;
 
 	return true;
 }
